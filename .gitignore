@@ -60,4 +60,8 @@ generated_videos/
 .Spotlight-V100
 .Trashes
 ehthumbs.db
-Thumbs.db
+Thumbs.db.env
+youtube_credentials.json
+youtube_token.json
+*.log
+data/
