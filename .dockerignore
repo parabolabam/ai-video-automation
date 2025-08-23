@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+
+# Venv/UV cache
+.venv/
+.uv/
+
+# Git
+.git
+.gitignore
+
+# Local secrets and creds
+.env
+youtube_credentials.json
+youtube_token.json
+
+# OS
+.DS_Store
