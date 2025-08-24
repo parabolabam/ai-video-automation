@@ -20,6 +20,10 @@ async def tiktok_upload(video: str, caption: str) -> Optional[str]:
     """
     logger = logging.getLogger(__name__)
     logger.info("Starting TikTok upload")
+    # Allow disabling via environment flag
+    if os.getenv("TIKTOK_UPLOAD_DISABLED"):
+        logger.info("TIKTOK_UPLOAD_DISABLED is set; skipping TikTok upload")
+        return None
     access_token = await get_access_token_for_run()
     if not access_token:
         logger.info("TIKTOK_ACCESS_TOKEN missing; skipping TikTok upload")

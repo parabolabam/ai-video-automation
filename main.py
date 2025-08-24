@@ -27,6 +27,15 @@ clients = setup_apis()
 task_id = os.getenv("TASK_ID")
 
 
+def remove_video(video_path):
+    try:
+        os.remove(video_path)
+        logger.info(f"Removed local video file: {video_path}")
+    except Exception as e:
+        logger.warning(f"Failed to remove local video file: {e}")
+    return
+
+
 async def handle_existing_task_id(task_id):
     if task_id:
         video_path = await poll_with_task_id(task_id)
@@ -38,19 +47,17 @@ async def handle_existing_task_id(task_id):
             logger.error("Polling did not produce a downloadable video.")
             return
 
-        await upload_to_youtube(
-            clients["youtube_service"],
-            video_path,
-            f"AI Generated (Kie task {task_id[:8]})",
-            f"Uploaded from Kie task {task_id}",
+        await asyncio.gather(
+            upload_to_youtube(
+                clients["youtube_service"],
+                video_path,
+                "AI Generated",
+                "Created with AI",
+            ),
+            tiktok_upload(video_path, "AI Generated"),
         )
-        await tiktok_upload(video_path, "AI Generated")
-        try:
-            os.remove(video_path)
-            logger.info(f"Removed local video file: {video_path}")
-        except Exception as e:
-            logger.warning(f"Failed to remove local video file: {e}")
-        return
+
+        remove_video(video_path)
 
 
 async def main() -> None:
@@ -71,13 +78,18 @@ async def main() -> None:
         if not video_path:
             logger.error("Kie generation failed")
             return
-        # Upload to YouTube
-        await upload_to_youtube(
-            clients["youtube_service"], video_path, "AI Generated", "Created with AI"
+
+        await asyncio.gather(
+            upload_to_youtube(
+                clients["youtube_service"],
+                video_path,
+                "AI Generated",
+                "Created with AI",
+            ),
+            tiktok_upload(video_path, "AI Generated"),
         )
-        await tiktok_upload(video_path, "AI Generated")
-        print("CALL")
-        # Optional TikTok upload using a public URL (pull-based)
+
+        remove_video(video_path)
 
     except Exception as e:
         logger.error(f"Main execution failed: {e}")
