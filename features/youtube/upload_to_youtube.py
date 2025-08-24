@@ -10,7 +10,9 @@ from googleapiclient.http import MediaFileUpload
 from googleapiclient.errors import HttpError
 
 
-def upload_to_youtube(youtube_service: Any, video_path: str, title: str, description: str) -> Optional[str]:
+async def upload_to_youtube(
+    youtube_service: Any, video_path: str, title: str, description: str
+) -> Optional[str]:
     """Upload video to YouTube using provided service. Return video URL or None."""
     logger = logging.getLogger(__name__)
 
@@ -20,7 +22,7 @@ def upload_to_youtube(youtube_service: Any, video_path: str, title: str, descrip
 
     try:
         if "#shorts" not in title.lower():
-            title = f"{title} #Shorts"
+            title = f"{title} #Shorts #AIGenerated #VideoArt"
         if "#shorts" not in description.lower():
             description = f"{description}\n\n#Shorts #AIGenerated #VideoArt"
 
@@ -58,11 +60,7 @@ def upload_to_youtube(youtube_service: Any, video_path: str, title: str, descrip
         logger.info(f"Video uploaded successfully: {video_url}")
         if video_url:
             logger.info(f"Upload successful: {video_url}")
-            try:
-                os.remove(video_path)
-                logger.info(f"Removed local video file: {video_path}")
-            except Exception as e:
-                logger.warning(f"Failed to remove local video file: {e}")
+
         else:
             logger.error("YouTube upload failed")
         return video_url
