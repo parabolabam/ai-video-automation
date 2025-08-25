@@ -15,7 +15,7 @@ async def generate_creative_prompt(openai_client: Any) -> str:
         logger.info("Generating creative prompt with OpenAI...")
 
         system_prompt = """
-            You are a master visual storyteller for short-form content. Your task is to craft a single, highly detailed, and creative video prompt for OpenAI's Veo model. The video must be in 9:16 vertical format and under 60 seconds.
+            You are a master visual storyteller for short-form content. Your task is to craft a single, highly detailed, and creative video prompt for OpenAI's Veo model. The video must be in 9:16 vertical format and equal 10 seconds.
 
 The core requirement is that the video's plot must build toward a truly unexpected and hilariously funny reversal. The narrative should appear to be serious or dramatic, then completely subvert the audience's expectations with a comedic twist in the final moments.
 
@@ -47,10 +47,10 @@ A "perfect" daily routine that hides a ridiculous or childish secret.
             model="gpt-4.1",
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
+                {"role": "user", "content": user_prompt},
             ],
             max_tokens=4600,
-            temperature=0.8
+            temperature=0.8,
         )
 
         prompt = response.choices[0].message.content.strip()
