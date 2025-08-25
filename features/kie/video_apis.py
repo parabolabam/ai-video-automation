@@ -45,10 +45,24 @@ class VideoGenerationAPI:
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=payload, headers=headers) as response:
                 if response.status != 200:
+                    try:
+                        body = await response.text()
+                    except Exception:
+                        body = "<no body>"
+                    logger.warning("Kie generate failed: %s %s", response.status, body)
                     return None
-                result = await response.json()
-                job_id = result.get("data", {}).get("taskId")
+                try:
+                    result = await response.json()
+                except Exception:
+                    body = await response.text()
+                    logger.warning("Kie returned non-JSON body: %s", body)
+                    return None
+                if not isinstance(result, dict):
+                    logger.warning("Kie JSON is not an object: %r", result)
+                    return None
+                job_id = (result.get("data") or {}).get("taskId")
                 if not job_id:
+                    logger.warning("Kie response missing taskId: %r", result)
                     return None
                 return await self._poll_for_completion(session, job_id, headers, max_wait_time)
 
@@ -59,13 +73,25 @@ class VideoGenerationAPI:
         while elapsed < max_wait_time:
             async with session.get(status_url, headers=headers) as resp:
                 if resp.status == 200:
-                    r = await resp.json()
-                    d = r["data"]
-                    if str(d["successFlag"]) == "1":
-                        url = d["response"]["resultUrls"][0]
-                        return await self._download_video(session, url, job_id)
-                    if str(d["successFlag"]) in {"2", "3"}:
-                        return None
+                    try:
+                        r = await resp.json()
+                    except Exception:
+                        logger.warning("Kie status non-JSON; status=%s", resp.status)
+                        r = None
+                    if isinstance(r, dict) and isinstance(r.get("data"), dict):
+                        d = r["data"]
+                        flag = str(d.get("successFlag"))
+                        if flag == "1":
+                            try:
+                                url = d["response"]["resultUrls"][0]
+                            except Exception:
+                                logger.warning(
+                                    "Kie success but missing resultUrls: %r", d
+                                )
+                                return None
+                            return await self._download_video(session, url, job_id)
+                        if flag in {"2", "3"}:
+                            return None
             await asyncio.sleep(check_interval)
             elapsed += check_interval
         return None

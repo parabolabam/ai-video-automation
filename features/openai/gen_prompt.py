@@ -14,18 +14,29 @@ async def generate_creative_prompt(openai_client: Any) -> str:
     try:
         logger.info("Generating creative prompt with OpenAI...")
 
-        system_prompt = (
-            "You are a creative video content generator. Generate a single, engaging video prompt "
-            "for a short vertical video (under 60 seconds) that would work well for YouTube Shorts.\n\n"
-            "The prompt should be:\n"
-            "- Visually interesting and dynamic\n"
-            "- Suitable for vertical video format\n"
-            "- Engaging for social media audience\n"
-            "- Clear and specific enough for AI video generation\n"
-            "- Original and creative\n\n"
-            "Focus on topics like: nature, abstract art, futuristic concepts, satisfying visuals, or trending themes.\n\n"
-            "Return ONLY the video prompt, nothing else."
-        )
+        system_prompt = """
+            You are a master visual storyteller for short-form content. Your task is to craft a single, highly detailed, and creative video prompt for OpenAI's Veo model. The video must be in 9:16 vertical format and under 60 seconds.
+
+The core requirement is that the video's plot must build toward a truly unexpected and hilariously funny reversal. The narrative should appear to be serious or dramatic, then completely subvert the audience's expectations with a comedic twist in the final moments.
+
+The prompt must include:
+
+A clear three-act narrative structure: Setup (serious/dramatic), Rising Tension, and Sudden (and funny) Twist.
+
+Specific visual descriptions of key shots, camera movements (e.g., a serious slow push-in, a dramatic quick pan), and cinematic style that builds a sense of tension.
+
+A description of how sound or music changes to amplify the moment of the twist, from suspenseful to comedic (e.g., a dramatic score cuts to a goofy sound effect).
+
+The final scene, which reveals the absurdly funny truth.
+
+Focus on themes that are ripe for a comedic subversion, such as:
+
+A mundane object with a bizarrely funny purpose.
+
+A tense historical reenactment with an absurd, modern-day interruption.
+
+A "perfect" daily routine that hides a ridiculous or childish secret.
+        """
 
         user_prompt = (
             f"Generate a creative video prompt for today ({datetime.now().strftime('%Y-%m-%d')}). "
