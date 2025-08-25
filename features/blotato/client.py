@@ -42,7 +42,6 @@ class BlotatoClient:
     def _headers(self) -> Dict[str, str]:
         return {
             "blotato-api-key": self.api_key,
-            "Content-Type": "application/json",
             "Accept": "application/json",
         }
 
@@ -113,7 +112,16 @@ class BlotatoClient:
                         filename=filename,
                         content_type=content_type,
                     )
-                    async with session.post(media_endpoint, data=form) as resp:
+                    # Ensure we do not send a JSON Content-Type for multipart
+                    async with session.post(
+                        media_endpoint,
+                        data=form,
+                        headers={
+                            k: v
+                            for k, v in self._headers().items()
+                            if k.lower() != "content-type"
+                        },
+                    ) as resp:
                         if self._should_retry(resp.status) and attempt <= max_retries:
                             await asyncio.sleep(
                                 retry_backoff_base * (2 ** (attempt - 1))
@@ -160,6 +168,28 @@ class BlotatoClient:
             if target.pageId:
                 target_payload["pageId"] = target.pageId
 
+        # Provider-specific required fields
+        if platform == "youtube":
+            # Required by Blotato for YouTube
+            yt_title = (
+                os.getenv("BLOTATO_YOUTUBE_TITLE")
+                or content.get("text")
+                or "AI Generated"
+            )
+            yt_privacy = (
+                os.getenv("BLOTATO_YOUTUBE_PRIVACY_STATUS") or "public"
+            ).lower()
+            yt_notify_str = (
+                (os.getenv("BLOTATO_YOUTUBE_NOTIFY_SUBSCRIBERS") or "false")
+                .strip()
+                .lower()
+            )
+            yt_notify = yt_notify_str in {"1", "true", "yes", "y"}
+
+            target_payload["title"] = yt_title[:100]
+            target_payload["privacyStatus"] = yt_privacy
+            target_payload["shouldNotifySubscribers"] = yt_notify
+
         payload: Dict[str, Any] = {
             "post": {
                 "accountId": account_id,
@@ -171,13 +201,12 @@ class BlotatoClient:
             payload["scheduledTime"] = scheduled_time_iso
 
         async with aiohttp.ClientSession(
-            headers={**self._headers(), "Content-Type": "application/json"},
+            headers=self._headers(),
             timeout=aiohttp.ClientTimeout(total=60),
         ) as session:
             attempt = 0
             while True:
                 attempt += 1
-                print({**self._headers(), "Content-Type": "application/json"})
                 async with session.post(
                     post_endpoint,
                     headers={**self._headers(), "Content-Type": "application/json"},
