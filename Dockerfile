@@ -22,4 +22,4 @@ ENV PYTHONUNBUFFERED=1 \
 HEALTHCHECK CMD python -c "import sys; sys.exit(0)"
 
 # Default command runs orchestrator
-CMD ["uv", "run", "main.py"]
+CMD ["uv", "run", "main_v2.py"]
