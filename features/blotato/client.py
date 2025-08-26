@@ -50,8 +50,8 @@ class BlotatoClient:
             return
         try:
             payload = await resp.json()
-        except Exception:
-            payload = "<no body>"
+        except Exception as e:
+            payload = f"<no body: {e}>"
         raise BlotatoError(f"HTTP {resp.status} from {resp.url}: {payload}")
 
     def _should_retry(self, status_code: int) -> bool:
