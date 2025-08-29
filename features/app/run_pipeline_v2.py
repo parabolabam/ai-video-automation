@@ -53,7 +53,10 @@ async def run_pipeline_v2(openai_client: Any) -> bool:
         if task_id:
             media_url = await poll_kie_status_for_url(task_id)
 
-        if not media_url and isinstance(video_path, str):
+        use_direct_url = (os.getenv("BLOTATO_USE_DIRECT_URL", "true").strip().lower() in ("1", "true", "yes", "y"))
+        if media_url and use_direct_url:
+            logger.info("Using direct media URL for Blotato; skipping /v2/media upload.")
+        elif not media_url and isinstance(video_path, str):
             # No URL available; use multipart upload to Blotato
             media_resp = await client.upload_media(file_path=video_path)
             logger.info(f"Uploaded media to Blotato: {media_resp}")
