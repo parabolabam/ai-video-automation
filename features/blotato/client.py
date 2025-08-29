@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 import aiohttp
+import random
 
 
 BLOTATO_BASE_URL = "https://backend.blotato.com"
@@ -58,6 +59,10 @@ class BlotatoClient:
         # Retry on common transient statuses
         return status_code in (429, 500, 502, 503, 504)
 
+    async def _sleep_backoff(self, attempt: int, backoff_base: float) -> None:
+        base = backoff_base * (2 ** (attempt - 1))
+        await asyncio.sleep(base + random.uniform(0, 0.5))
+
     async def upload_media(
         self,
         *,
@@ -77,8 +82,14 @@ class BlotatoClient:
             raise ValueError("Either url or file_path must be provided")
 
         media_endpoint = f"{self.base_url}/v2/media"
+        eff_max_retries = int(os.getenv("BLOTATO_MAX_RETRIES", str(max_retries)))
+        eff_backoff = float(
+            os.getenv("BLOTATO_RETRY_BACKOFF_BASE", str(retry_backoff_base))
+        )
+        eff_timeout = float(os.getenv("BLOTATO_TIMEOUT_TOTAL", "90"))
+
         async with aiohttp.ClientSession(
-            headers=self._headers(), timeout=aiohttp.ClientTimeout(total=60)
+            headers=self._headers(), timeout=aiohttp.ClientTimeout(total=eff_timeout)
         ) as session:
             attempt = 0
             while True:
@@ -90,11 +101,9 @@ class BlotatoClient:
                         ) as resp:
                             if (
                                 self._should_retry(resp.status)
-                                and attempt <= max_retries
+                                and attempt <= eff_max_retries
                             ):
-                                await asyncio.sleep(
-                                    retry_backoff_base * (2 ** (attempt - 1))
-                                )
+                                await self._sleep_backoff(attempt, eff_backoff)
                                 continue
                             await self._raise_for_status(resp)
                             return await resp.json()
@@ -122,16 +131,22 @@ class BlotatoClient:
                             if k.lower() != "content-type"
                         },
                     ) as resp:
-                        if self._should_retry(resp.status) and attempt <= max_retries:
-                            await asyncio.sleep(
-                                retry_backoff_base * (2 ** (attempt - 1))
-                            )
+                        if (
+                            self._should_retry(resp.status)
+                            and attempt <= eff_max_retries
+                        ):
+                            await self._sleep_backoff(attempt, eff_backoff)
                             continue
                         await self._raise_for_status(resp)
                         return await resp.json()
+                except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                    if attempt <= eff_max_retries:
+                        await self._sleep_backoff(attempt, eff_backoff)
+                        continue
+                    raise BlotatoError(f"Network error during upload_media: {e}")
                 except BlotatoError:
-                    if attempt <= max_retries:
-                        await asyncio.sleep(retry_backoff_base * (2 ** (attempt - 1)))
+                    if attempt <= eff_max_retries:
+                        await self._sleep_backoff(attempt, eff_backoff)
                         continue
                     raise
 
@@ -200,20 +215,35 @@ class BlotatoClient:
         if scheduled_time_iso:
             payload["scheduledTime"] = scheduled_time_iso
 
+        eff_max_retries = int(os.getenv("BLOTATO_MAX_RETRIES", str(max_retries)))
+        eff_backoff = float(
+            os.getenv("BLOTATO_RETRY_BACKOFF_BASE", str(retry_backoff_base))
+        )
+        eff_timeout = float(os.getenv("BLOTATO_TIMEOUT_TOTAL", "90"))
+
         async with aiohttp.ClientSession(
             headers=self._headers(),
-            timeout=aiohttp.ClientTimeout(total=60),
+            timeout=aiohttp.ClientTimeout(total=eff_timeout),
         ) as session:
             attempt = 0
             while True:
                 attempt += 1
-                async with session.post(
-                    post_endpoint,
-                    headers={**self._headers(), "Content-Type": "application/json"},
-                    json=payload,
-                ) as resp:
-                    if self._should_retry(resp.status) and attempt <= max_retries:
-                        await asyncio.sleep(retry_backoff_base * (2 ** (attempt - 1)))
+                try:
+                    async with session.post(
+                        post_endpoint,
+                        headers={**self._headers(), "Content-Type": "application/json"},
+                        json=payload,
+                    ) as resp:
+                        if (
+                            self._should_retry(resp.status)
+                            and attempt <= eff_max_retries
+                        ):
+                            await self._sleep_backoff(attempt, eff_backoff)
+                            continue
+                        await self._raise_for_status(resp)
+                        return await resp.json()
+                except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                    if attempt <= eff_max_retries:
+                        await self._sleep_backoff(attempt, eff_backoff)
                         continue
-                    await self._raise_for_status(resp)
-                    return await resp.json()
+                    raise BlotatoError(f"Network error during publish_post: {e}")
