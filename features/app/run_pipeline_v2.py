@@ -53,15 +53,15 @@ async def run_pipeline_v2(openai_client: Any) -> bool:
         if task_id:
             media_url = await poll_kie_status_for_url(task_id)
 
-        use_direct_url = (os.getenv("BLOTATO_USE_DIRECT_URL", "true").strip().lower() in ("1", "true", "yes", "y"))
-        if media_url and use_direct_url:
-            logger.info("Using direct media URL for Blotato; skipping /v2/media upload.")
-        elif not media_url and isinstance(video_path, str):
-            # No URL available; use multipart upload to Blotato
-            media_resp = await client.upload_media(file_path=video_path)
-            logger.info(f"Uploaded media to Blotato: {media_resp}")
-            if isinstance(media_resp, dict):
-                media_url = media_resp.get("url") or media_resp.get("mediaUrl") or media_resp.get("data", {}).get("url")
+        # Always skip /v2/media uploads per configuration; prefer direct URL if present
+        if media_url:
+            logger.info(
+                "Using direct media URL for Blotato; /v2/media skipped by policy."
+            )
+        else:
+            logger.warning(
+                "No media URL available; proceeding without mediaUrls (skipping /v2/media by policy). Some platforms may reject text-only posts."
+            )
 
         # Multi-platform support: BLOTATO_TARGETS takes precedence if provided.
         # Example:
@@ -86,29 +86,54 @@ async def run_pipeline_v2(openai_client: Any) -> bool:
 
                 targets_list = []
                 for platform in platforms:
-                    # Prefer platform-specific account var if set, else global
-                    specific_key = f"BLOTATO_ACCOUNT_ID_{platform.upper()}"
-                    account_id = os.getenv(specific_key) or os.getenv("BLOTATO_ACCOUNT_ID")
+                    # Do not use or require any accountId env variables; rely on Blotato defaults
                     page_id = os.getenv(f"BLOTATO_PAGE_ID_{platform.upper()}") or os.getenv("BLOTATO_PAGE_ID")
-                    if not account_id:
-                        logger.warning(f"Skipping {platform}: missing {specific_key} and BLOTATO_ACCOUNT_ID")
-                        continue
-                    targets_list.append({"platform": platform, "accountId": account_id, "pageId": page_id})
+                    targets_list.append({"platform": platform, "pageId": page_id})
+
+            # If TikTok is among targets, upload media to Blotato first (TikTok requires hosted media)
+            tiktok_media_url = None
+            if any(
+                str(t.get("platform", "")).lower() == "tiktok" for t in targets_list
+            ):
+                try:
+                    if media_url:
+                        uploaded = await client.upload_media(url=media_url)
+                    elif isinstance(video_path, str):
+                        uploaded = await client.upload_media(file_path=video_path)
+                    else:
+                        uploaded = None
+                    if isinstance(uploaded, dict):
+                        tiktok_media_url = (
+                            uploaded.get("url")
+                            or uploaded.get("mediaUrl")
+                            or uploaded.get("data", {}).get("url")
+                        )
+                    if not tiktok_media_url:
+                        logger.error(
+                            "TikTok requires Blotato-hosted media, but upload did not return a URL."
+                        )
+                except Exception as e:
+                    logger.error(f"Failed to upload media for TikTok: {e}")
 
             async def post_one(target_cfg: Dict[str, Any]) -> None:
                 platform = str(target_cfg.get("platform", "")).lower()
-                account_id = target_cfg.get("accountId")
                 page_id = target_cfg.get("pageId")
-                if not platform or not account_id:
-                    logger.warning(f"Skipping target missing platform/accountId: {target_cfg}")
+                account_id = None
+                if platform == "tiktok":
+                    account_id = os.getenv("TIKTOK_ACCOUNT_ID")
+                if not platform:
+                    logger.warning(f"Skipping target missing platform: {target_cfg}")
                     return
                 target = BlotatoPostTarget(targetType=platform, pageId=page_id)
                 try:
+                    chosen_media = (
+                        tiktok_media_url if platform == "tiktok" else media_url
+                    )
                     resp = await client.publish_post(
                         account_id=account_id,
                         platform=platform,
                         text=post_text,
-                        media_urls=[media_url] if media_url else None,
+                        media_urls=[chosen_media] if chosen_media else None,
                         target=target,
                     )
                     logger.info(f"Published via Blotato to {platform}: {resp}")
@@ -120,18 +145,36 @@ async def run_pipeline_v2(openai_client: Any) -> bool:
         else:
             # Fallback to single target via envs
             target_platform = os.getenv("BLOTATO_PLATFORM", "tiktok").lower()
-            account_id = os.getenv("BLOTATO_ACCOUNT_ID")
-            if not account_id:
-                logger.error("BLOTATO_ACCOUNT_ID is not set. Aborting v2 pipeline.")
-                return False
             target = BlotatoPostTarget(targetType=target_platform, pageId=os.getenv("BLOTATO_PAGE_ID"))
 
             async def post_single() -> None:
+                account_id = (
+                    os.getenv("TIKTOK_ACCOUNT_ID")
+                    if target_platform == "tiktok"
+                    else None
+                )
+                chosen_media = media_url
+                if target_platform == "tiktok":
+                    try:
+                        if media_url:
+                            uploaded = await client.upload_media(url=media_url)
+                        elif isinstance(video_path, str):
+                            uploaded = await client.upload_media(file_path=video_path)
+                        else:
+                            uploaded = None
+                        if isinstance(uploaded, dict):
+                            chosen_media = (
+                                uploaded.get("url")
+                                or uploaded.get("mediaUrl")
+                                or uploaded.get("data", {}).get("url")
+                            )
+                    except Exception as e:
+                        logger.error(f"Failed to upload media for TikTok: {e}")
                 resp = await client.publish_post(
                     account_id=account_id,
                     platform=target_platform,
                     text=post_text,
-                    media_urls=[media_url] if media_url else None,
+                    media_urls=[chosen_media] if chosen_media else None,
                     target=target,
                     scheduled_time_iso=scheduled_time_iso,
                 )
@@ -152,5 +195,3 @@ async def run_pipeline_v2(openai_client: Any) -> bool:
     except Exception as e:
         logger.error(f"v2 pipeline failed: {e}")
         return False
-
-

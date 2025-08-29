@@ -153,7 +153,7 @@ class BlotatoClient:
     async def publish_post(
         self,
         *,
-        account_id: str,
+        account_id: Optional[str] = None,
         platform: str,
         text: str,
         media_urls: Optional[List[str]] = None,
@@ -204,14 +204,53 @@ class BlotatoClient:
             target_payload["title"] = yt_title[:100]
             target_payload["privacyStatus"] = yt_privacy
             target_payload["shouldNotifySubscribers"] = yt_notify
-
-        payload: Dict[str, Any] = {
-            "post": {
-                "accountId": account_id,
-                "content": content,
-                "target": target_payload,
+        elif platform == "tiktok":
+            # Required by Blotato for TikTok
+            raw_privacy = (
+                (os.getenv("BLOTATO_TIKTOK_PRIVACY_LEVEL") or "public").strip().lower()
+            )
+            privacy_map = {
+                "public": "PUBLIC_TO_EVERYONE",
+                "everyone": "PUBLIC_TO_EVERYONE",
+                "self_only": "SELF_ONLY",
+                "private": "SELF_ONLY",
+                "friends": "MUTUAL_FOLLOW_FRIENDS",
+                "mutual_friends": "MUTUAL_FOLLOW_FRIENDS",
+                "followers": "FOLLOWER_OF_CREATOR",
+                "follower_of_creator": "FOLLOWER_OF_CREATOR",
             }
+            tk_privacy = privacy_map.get(raw_privacy, "PUBLIC_TO_EVERYONE")
+
+            def _bool_env(name: str, default: str) -> bool:
+                val = (os.getenv(name) or default).strip().lower()
+                return val in {"1", "true", "yes", "y"}
+
+            target_payload["privacyLevel"] = tk_privacy
+            target_payload["disabledComments"] = _bool_env(
+                "BLOTATO_TIKTOK_DISABLED_COMMENTS", "false"
+            )
+            target_payload["disabledDuet"] = _bool_env(
+                "BLOTATO_TIKTOK_DISABLED_DUET", "false"
+            )
+            target_payload["disabledStitch"] = _bool_env(
+                "BLOTATO_TIKTOK_DISABLED_STITCH", "false"
+            )
+            target_payload["isBrandedContent"] = _bool_env(
+                "BLOTATO_TIKTOK_BRANDED_CONTENT", "false"
+            )
+            target_payload["isYourBrand"] = _bool_env(
+                "BLOTATO_TIKTOK_IS_YOUR_BRAND", "false"
+            )
+            target_payload["isAiGenerated"] = True
+
+        post_body: Dict[str, Any] = {
+            "content": content,
+            "target": target_payload,
         }
+        if account_id:
+            post_body["accountId"] = account_id
+
+        payload: Dict[str, Any] = {"post": post_body}
         if scheduled_time_iso:
             payload["scheduledTime"] = scheduled_time_iso
 
