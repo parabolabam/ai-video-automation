@@ -10,6 +10,7 @@ import os
 from typing import Any, Dict, List
 
 from features.openai.gen_prompt import generate_creative_prompt
+from features.openai.gen_prompt import generate_trending_hashtags
 from features.kie.video_apis import VideoGenerationAPI
 from features.kie.poll_with_task_id import poll_with_task_id
 from features.kie.poll_kie_status import poll_kie_status_for_url
@@ -82,7 +83,48 @@ async def run_pipeline_v2(openai_client: Any) -> bool:
         # BLOTATO_TARGETS='[{"accountId":"acc_1","platform":"tiktok"},{"accountId":"acc_2","platform":"instagram","pageId":"..."}]'
         # Prefer explicit post text if provided, else derive from prompt (if any), else fallback
         explicit_text = os.getenv("BLOTATO_POST_TEXT")
-        post_text = explicit_text or (f"{prompt[:180]}" if isinstance(prompt, str) else "AI Generated")
+        base_text = explicit_text or (
+            f"{prompt[:180]}" if isinstance(prompt, str) else "AI Generated"
+        )
+
+        async def build_hashtags(src: str | None, platform: str | None = None) -> str:
+            override = os.getenv("BLOTATO_HASHTAGS")
+            if override:
+                tags = [
+                    f"#{t.strip().lstrip('#')}"
+                    for t in override.split(",")
+                    if t.strip()
+                ]
+                return " ".join(dict.fromkeys(tags))[:200]
+            if not src:
+                return "#ai #viral #shorts"
+            # Try OpenAI trending hashtags per platform
+            try:
+                plat = (platform or os.getenv("DEFAULT_PLATFORM") or "tiktok").lower()
+                tags = await generate_trending_hashtags(openai_client, plat, src)
+                tags = [f"#{t}" for t in tags]
+                return " ".join(dict.fromkeys(tags))[:200]
+            except Exception:
+                # Fallback simple extraction
+                words = [
+                    w.strip().lower()
+                    for w in src.replace("\n", " ").split(" ")
+                    if w.strip()
+                ]
+                words = ["".join(ch for ch in w if ch.isalnum()) for w in words]
+                words = [w for w in words if len(w) >= 4][:5]
+                defaults = ["ai", "viral", "shorts"]
+                uniq = []
+                for w in words + defaults:
+                    tag = f"#{w}"
+                    if w and tag not in uniq:
+                        uniq.append(tag)
+                return " ".join(uniq)[:200]
+
+        hashtags = await build_hashtags(
+            prompt if isinstance(prompt, str) else base_text
+        )
+        post_text = f"{base_text}\n\n{hashtags}".strip()
         scheduled_time_iso = os.getenv("BLOTATO_SCHEDULED_TIME")  # optional ISO8601
 
         targets_raw = os.getenv("BLOTATO_TARGETS")
