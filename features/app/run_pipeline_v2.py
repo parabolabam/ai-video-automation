@@ -48,20 +48,34 @@ async def run_pipeline_v2(openai_client: Any) -> bool:
             return False
         client = BlotatoClient(api_key=blotato_api_key)
 
-        # Prefer a public media URL for Blotato if possible
+        # Resolve a direct URL if TASK_ID present (Kie URL); otherwise we have a local file path
         media_url = None
         if task_id:
             media_url = await poll_kie_status_for_url(task_id)
 
-        # Always skip /v2/media uploads per configuration; prefer direct URL if present
-        if media_url:
-            logger.info(
-                "Using direct media URL for Blotato; /v2/media skipped by policy."
-            )
-        else:
-            logger.warning(
-                "No media URL available; proceeding without mediaUrls (skipping /v2/media by policy). Some platforms may reject text-only posts."
-            )
+        # ALWAYS upload to Blotato once and reuse hosted URL for all platforms
+        hosted_media_url: str | None = None
+        try:
+            uploaded = None
+            if media_url:
+                uploaded = await client.upload_media(url=media_url)
+            elif isinstance(video_path, str):
+                uploaded = await client.upload_media(file_path=video_path)
+            if isinstance(uploaded, dict):
+                hosted_media_url = (
+                    uploaded.get("url")
+                    or uploaded.get("mediaUrl")
+                    or uploaded.get("data", {}).get("url")
+                )
+            if not hosted_media_url:
+                logger.error(
+                    "Upload to Blotato did not return a media URL; aborting v2 pipeline."
+                )
+                return False
+            logger.info("Blotato hosted media URL resolved")
+        except Exception as e:
+            logger.error(f"Failed to upload media to Blotato: {e}")
+            return False
 
         # Multi-platform support: BLOTATO_TARGETS takes precedence if provided.
         # Example:
@@ -90,52 +104,51 @@ async def run_pipeline_v2(openai_client: Any) -> bool:
                     page_id = os.getenv(f"BLOTATO_PAGE_ID_{platform.upper()}") or os.getenv("BLOTATO_PAGE_ID")
                     targets_list.append({"platform": platform, "pageId": page_id})
 
-            # If TikTok is among targets, upload media to Blotato first (TikTok requires hosted media)
-            tiktok_media_url = None
-            if any(
-                str(t.get("platform", "")).lower() == "tiktok" for t in targets_list
-            ):
-                try:
-                    if media_url:
-                        uploaded = await client.upload_media(url=media_url)
-                    elif isinstance(video_path, str):
-                        uploaded = await client.upload_media(file_path=video_path)
-                    else:
-                        uploaded = None
-                    if isinstance(uploaded, dict):
-                        tiktok_media_url = (
-                            uploaded.get("url")
-                            or uploaded.get("mediaUrl")
-                            or uploaded.get("data", {}).get("url")
-                        )
-                    if not tiktok_media_url:
-                        logger.error(
-                            "TikTok requires Blotato-hosted media, but upload did not return a URL."
-                        )
-                except Exception as e:
-                    logger.error(f"Failed to upload media for TikTok: {e}")
+            # Deduplicate targets to avoid double publishes (by platform + pageId)
+            deduped: List[Dict[str, Any]] = []
+            seen_keys = set()
+            for t in targets_list:
+                key = (str(t.get("platform", "")).lower(), str(t.get("pageId") or ""))
+                if key in seen_keys:
+                    continue
+                seen_keys.add(key)
+                deduped.append(t)
+            targets_list = deduped
+
+            # In-run dedup to prevent double publishes (same platform/page/media)
+            posted_keys: set[tuple[str, str, str]] = set()
 
             async def post_one(target_cfg: Dict[str, Any]) -> None:
                 platform = str(target_cfg.get("platform", "")).lower()
                 page_id = target_cfg.get("pageId")
+                # Optional account IDs per platform if required by Blotato
                 account_id = None
                 if platform == "tiktok":
                     account_id = os.getenv("TIKTOK_ACCOUNT_ID")
+                elif platform == "youtube":
+                    account_id = os.getenv("YOUTUBE_ACCOUNT_ID")
+                elif platform == "instagram":
+                    account_id = os.getenv("INSTAGRAM_ACCOUNT_ID")
                 if not platform:
                     logger.warning(f"Skipping target missing platform: {target_cfg}")
                     return
+                # Dedup key includes platform, pageId (or empty), and hosted media URL
+                dedup_key = (platform, str(page_id or ""), hosted_media_url)
+                if dedup_key in posted_keys:
+                    logger.info(
+                        f"Skipping duplicate post for {platform} (pageId={page_id})"
+                    )
+                    return
                 target = BlotatoPostTarget(targetType=platform, pageId=page_id)
                 try:
-                    chosen_media = (
-                        tiktok_media_url if platform == "tiktok" else media_url
-                    )
                     resp = await client.publish_post(
                         account_id=account_id,
                         platform=platform,
                         text=post_text,
-                        media_urls=[chosen_media] if chosen_media else None,
+                        media_urls=[hosted_media_url],
                         target=target,
                     )
+                    posted_keys.add(dedup_key)
                     logger.info(f"Published via Blotato to {platform}: {resp}")
                 except Exception as e:
                     logger.error(f"Blotato post failed for {platform}: {e}")
@@ -148,33 +161,20 @@ async def run_pipeline_v2(openai_client: Any) -> bool:
             target = BlotatoPostTarget(targetType=target_platform, pageId=os.getenv("BLOTATO_PAGE_ID"))
 
             async def post_single() -> None:
-                account_id = (
-                    os.getenv("TIKTOK_ACCOUNT_ID")
-                    if target_platform == "tiktok"
-                    else None
-                )
-                chosen_media = media_url
+                # Optional account IDs per platform if required by Blotato
                 if target_platform == "tiktok":
-                    try:
-                        if media_url:
-                            uploaded = await client.upload_media(url=media_url)
-                        elif isinstance(video_path, str):
-                            uploaded = await client.upload_media(file_path=video_path)
-                        else:
-                            uploaded = None
-                        if isinstance(uploaded, dict):
-                            chosen_media = (
-                                uploaded.get("url")
-                                or uploaded.get("mediaUrl")
-                                or uploaded.get("data", {}).get("url")
-                            )
-                    except Exception as e:
-                        logger.error(f"Failed to upload media for TikTok: {e}")
+                    account_id = os.getenv("TIKTOK_ACCOUNT_ID")
+                elif target_platform == "youtube":
+                    account_id = os.getenv("YOUTUBE_ACCOUNT_ID")
+                elif target_platform == "instagram":
+                    account_id = os.getenv("INSTAGRAM_ACCOUNT_ID")
+                else:
+                    account_id = None
                 resp = await client.publish_post(
                     account_id=account_id,
                     platform=target_platform,
                     text=post_text,
-                    media_urls=[chosen_media] if chosen_media else None,
+                    media_urls=[hosted_media_url],
                     target=target,
                     scheduled_time_iso=scheduled_time_iso,
                 )

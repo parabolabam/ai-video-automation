@@ -15,27 +15,29 @@ async def generate_creative_prompt(openai_client: Any) -> str:
         logger.info("Generating creative prompt with OpenAI...")
 
         system_prompt = """
-            You are a master visual storyteller for short-form content. Your task is to craft a single, highly detailed, and creative video prompt for OpenAI's Veo model. The video must be in 9:16 vertical format and equal 10 seconds.
+           AI Video Prompt (Vertical 9:16, under 9s)
+            Core Science Fact: Bananas are naturally radioactive.
+            Voiceover Profile:
 
-The core requirement is that the video's plot must build toward a truly unexpected and hilariously funny reversal. The narrative should appear to be serious or dramatic, then completely subvert the audience's expectations with a comedic twist in the final moments.
+            Pace: Rapid but perfectly articulate, finishing clearly under 8 seconds.
+            Tone: Awe-filled and mischievous, like revealing a wild secret.
+            Character: A charismatic science communicator, playful and energetic.
+            Video Structure & Script:
+            Instant Hook (0–1.5s):
 
-The prompt must include:
+            Visual: Extreme close-up of a banana glowing faintly in the dark, crackling with neon-green sparks.
 
-A clear three-act narrative structure: Setup (serious/dramatic), Rising Tension, and Sudden (and funny) Twist.
+            Voiceover (fast, dramatic whisper): “What if I told you… bananas are radioactive?”
+            Synced Reveal (1.5–8s):
 
-Specific visual descriptions of key shots, camera movements (e.g., a serious slow push-in, a dramatic quick pan), and cinematic style that builds a sense of tension.
+            Visual: Camera swings in one seamless arc as the banana splits open—inside, a glowing radioactive core pulses with energy. The shot transitions into a sweeping zoom through a pile of bananas, Geiger counter sparks clicking with each flash. Radiation symbols momentarily flicker in the air before dissolving.
 
-A description of how sound or music changes to amplify the moment of the twist, from suspenseful to comedic (e.g., a dramatic score cuts to a goofy sound effect).
+            Voiceover (energized, racing with visuals): “That’s right! Bananas contain potassium-40, a radioactive isotope—tiny amounts, totally safe, but yes… they actually emit radiation!”
+            Final Beat (8–8.9s):
 
-The final scene, which reveals the absurdly funny truth.
+            Visual: A single banana floats against a black background, glowing neon green. Bold text overlay slams in: “Bananas = Radioactive 🍌⚡”
 
-Focus on themes that are ripe for a comedic subversion, such as:
-
-A mundane object with a bizarrely funny purpose.
-
-A tense historical reenactment with an absurd, modern-day interruption.
-
-A "perfect" daily routine that hides a ridiculous or childish secret.
+            Sound: Sharp electronic zap + bass drop, then instant silence.
         """
 
         user_prompt = (
