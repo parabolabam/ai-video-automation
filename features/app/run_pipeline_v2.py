@@ -159,6 +159,11 @@ async def run_pipeline_v2(openai_client: Any) -> bool:
         media_url = None
         if task_id:
             media_url = await poll_kie_status_for_url(task_id)
+        if not media_url:
+            logger.error(
+                "Failed to obtain Kie media URL. TASK_ID is required and must resolve to a public URL."
+            )
+            return False
 
         # ALWAYS upload to Blotato from public URL; do not use multipart file uploads
         hosted_media_url: str | None = None
