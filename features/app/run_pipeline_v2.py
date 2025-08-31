@@ -132,22 +132,24 @@ async def run_pipeline_v2(openai_client: Any) -> bool:
         task_id = os.getenv("TASK_ID")
         prompt = None
         video_path = None
-        if task_id:
-            logger.info(
-                f"TASK_ID detected: {task_id}. Skipping generation; polling Kie for completion."
-            )
-            video_path = await poll_with_task_id(task_id)
-            if not video_path:
-                logger.error("Polling did not produce a downloadable video.")
-                return False
-        else:
+        if not task_id:
+            # Obtain a task id first from Kie
             prompt = await generate_creative_prompt(openai_client)
             duration = int(os.getenv("VIDEO_DURATION", 8))
             quality = os.getenv("VIDEO_QUALITY", "fast").lower()
-            video_path = await VideoGenerationAPI("kie").generate_video(prompt, duration, quality)
-            if not video_path:
-                logger.error("Video generation failed in v2 pipeline.")
+            task_id = await VideoGenerationAPI("kie").request_kie_task_id(
+                prompt, duration, quality
+            )
+            if not task_id:
+                logger.error("Failed to obtain Kie taskId")
                 return False
+            logger.info(f"Obtained Kie taskId: {task_id}")
+
+        # Poll/download by task_id to keep local file for reference, even if we upload via URL
+        video_path = await poll_with_task_id(task_id)
+        if not video_path:
+            logger.error("Polling did not produce a downloadable video.")
+            return False
 
         blotato_api_key = os.getenv("BLOTATO_API_KEY")
         if not blotato_api_key:

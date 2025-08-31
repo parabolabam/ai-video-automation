@@ -66,6 +66,44 @@ class VideoGenerationAPI:
                     return None
                 return await self._poll_for_completion(session, job_id, headers, max_wait_time)
 
+    async def request_kie_task_id(
+        self, prompt: str, duration: int = 8, quality: str = "fast"
+    ) -> Optional[str]:
+        """Submit a Kie job and return the taskId without polling/download."""
+        url = f"{self.base_url}/veo/generate"
+        model = "veo3_fast"
+        payload = {
+            "prompt": f"Vertical 9:16 aspect ratio, {prompt}. High quality, engaging, 8 seconds.",
+            "mode": quality,
+            "duration": duration,
+            "aspectRatio": "9:16",
+            "model": model,
+        }
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload, headers=headers) as response:
+                if response.status != 200:
+                    try:
+                        body = await response.text()
+                    except Exception:
+                        body = "<no body>"
+                    logger.warning("Kie generate failed: %s %s", response.status, body)
+                    return None
+                try:
+                    result = await response.json()
+                except Exception:
+                    body = await response.text()
+                    logger.warning("Kie returned non-JSON body: %s", body)
+                    return None
+                job_id = (result.get("data") or {}).get("taskId")
+                if not job_id:
+                    logger.warning("Kie response missing taskId: %r", result)
+                    return None
+                return job_id
+
     async def _poll_for_completion(self, session: aiohttp.ClientSession, job_id: str, headers: Dict, max_wait_time: int) -> Optional[str]:
         status_url = f"{self.base_url}/veo/record-info?taskId={job_id}"
         check_interval = 15
