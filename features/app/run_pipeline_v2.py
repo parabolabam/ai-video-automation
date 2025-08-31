@@ -160,7 +160,7 @@ async def run_pipeline_v2(openai_client: Any) -> bool:
             # In-run dedup to prevent double publishes (same platform/page/media)
             posted_keys: set[tuple[str, str, str]] = set()
 
-            async def post_one(target_cfg: Dict[str, Any]) -> None:
+            async def post_one(target_cfg: Dict[str, Any]) -> bool:
                 platform = str(target_cfg.get("platform", "")).lower()
                 page_id = target_cfg.get("pageId")
                 # Optional account IDs per platform if required by Blotato
@@ -173,14 +173,14 @@ async def run_pipeline_v2(openai_client: Any) -> bool:
                     account_id = os.getenv("INSTAGRAM_ACCOUNT_ID")
                 if not platform:
                     logger.warning(f"Skipping target missing platform: {target_cfg}")
-                    return
+                    return False
                 # Dedup key includes platform, pageId (or empty), and hosted media URL
                 dedup_key = (platform, str(page_id or ""), hosted_media_url)
                 if dedup_key in posted_keys:
                     logger.info(
                         f"Skipping duplicate post for {platform} (pageId={page_id})"
                     )
-                    return
+                    return True
                 target = BlotatoPostTarget(targetType=platform, pageId=page_id)
                 try:
                     resp = await client.publish_post(
@@ -192,8 +192,10 @@ async def run_pipeline_v2(openai_client: Any) -> bool:
                     )
                     posted_keys.add(dedup_key)
                     logger.info(f"Published via Blotato to {platform}: {resp}")
+                    return True
                 except Exception as e:
                     logger.error(f"Blotato post failed for {platform}: {e}")
+                    raise RuntimeError(f"Publish failed for {platform}") from e
 
             for t in targets_list:
                 tasks.append(post_one(t))
@@ -202,7 +204,7 @@ async def run_pipeline_v2(openai_client: Any) -> bool:
             target_platform = os.getenv("BLOTATO_PLATFORM", "tiktok").lower()
             target = BlotatoPostTarget(targetType=target_platform, pageId=os.getenv("BLOTATO_PAGE_ID"))
 
-            async def post_single() -> None:
+            async def post_single() -> bool:
                 # Optional account IDs per platform if required by Blotato
                 if target_platform == "tiktok":
                     account_id = os.getenv("TIKTOK_ACCOUNT_ID")
@@ -212,20 +214,28 @@ async def run_pipeline_v2(openai_client: Any) -> bool:
                     account_id = os.getenv("INSTAGRAM_ACCOUNT_ID")
                 else:
                     account_id = None
-                resp = await client.publish_post(
-                    account_id=account_id,
-                    platform=target_platform,
-                    text=post_text,
-                    media_urls=[hosted_media_url],
-                    target=target,
-                    scheduled_time_iso=scheduled_time_iso,
-                )
-                logger.info(f"Published via Blotato: {resp}")
+                try:
+                    resp = await client.publish_post(
+                        account_id=account_id,
+                        platform=target_platform,
+                        text=post_text,
+                        media_urls=[hosted_media_url],
+                        target=target,
+                        scheduled_time_iso=scheduled_time_iso,
+                    )
+                    logger.info(f"Published via Blotato: {resp}")
+                    return True
+                except Exception as e:
+                    logger.error(f"Blotato post failed: {e}")
+                    raise RuntimeError("Publish failed for single target") from e
 
             tasks.append(post_single())
 
         if tasks:
-            await asyncio.gather(*tasks)
+            results = await asyncio.gather(*tasks)
+            if not all(results):
+                logger.error("One or more platform posts failed")
+                return False
 
         try:
             os.remove(video_path)
