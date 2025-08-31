@@ -110,6 +110,9 @@ class VideoGenerationAPI:
         elapsed = 0
         while elapsed < max_wait_time:
             async with session.get(status_url, headers=headers) as resp:
+                logger.info(
+                    f"Kie poll: task_id={job_id} elapsed={elapsed}s status={resp.status}"
+                )
                 if resp.status == 200:
                     try:
                         r = await resp.json()
@@ -119,6 +122,7 @@ class VideoGenerationAPI:
                     if isinstance(r, dict) and isinstance(r.get("data"), dict):
                         d = r["data"]
                         flag = str(d.get("successFlag"))
+                        logger.info(f"Kie poll: successFlag={flag}")
                         if flag == "1":
                             try:
                                 url = d["response"]["resultUrls"][0]
@@ -127,8 +131,12 @@ class VideoGenerationAPI:
                                     "Kie success but missing resultUrls: %r", d
                                 )
                                 return None
+                            logger.info("Kie poll: result URL received. Downloading...")
                             return await self._download_video(session, url, job_id)
                         if flag in {"2", "3"}:
+                            logger.warning(
+                                "Kie poll: terminal flag without result. Aborting."
+                            )
                             return None
             await asyncio.sleep(check_interval)
             elapsed += check_interval

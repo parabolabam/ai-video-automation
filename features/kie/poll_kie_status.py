@@ -40,21 +40,33 @@ async def poll_kie_status(task_id: str, status_url: Optional[str] = None, timeou
         while elapsed_time < timeout_seconds:
             try:
                 async with session.get(status_url, headers=headers) as response:
+                    logger.info(
+                        f"Kie poll: task_id={task_id} elapsed={elapsed_time}s status={response.status}"
+                    )
                     if response.status == 200:
                         result = await response.json()
                         data = result["data"]
                         flag = str(data["successFlag"])  # "0", "1", "2", or "3"
+                        logger.info(f"Kie poll: successFlag={flag}")
                         if flag == "1":
                             urls = data["response"]["resultUrls"]
                             if urls:
+                                logger.info(
+                                    f"Kie poll: result URL received ({len(urls)} urls). Downloading..."
+                                )
                                 return await _download_video(session, urls[0], task_id)
                             return None
                         if flag in {"2", "3"}:
+                            logger.warning(
+                                f"Kie poll: terminal flag={flag} without result. Aborting."
+                            )
                             return None
                     # non-200 → fall through to sleep/retry
-            except Exception:
+            except Exception as e:
                 # Any parsing/network error → retry until timeout
-                pass
+                logger.warning(
+                    f"Kie poll: transient error while parsing/reading status; retrying..., {e}"
+                )
 
             await asyncio.sleep(check_interval)
             elapsed_time += check_interval
