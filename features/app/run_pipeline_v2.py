@@ -7,7 +7,7 @@ import asyncio
 import json
 import logging
 import os
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from features.openai.gen_prompt import generate_creative_prompt
 from features.openai.gen_prompt import generate_trending_hashtags
@@ -15,6 +15,110 @@ from features.kie.video_apis import VideoGenerationAPI
 from features.kie.poll_with_task_id import poll_with_task_id
 from features.kie.poll_kie_status import poll_kie_status_for_url
 from features.blotato.client import BlotatoClient, BlotatoPostTarget
+
+
+async def post_one(
+    client: BlotatoClient,
+    *,
+    hosted_media_url: str,
+    post_text: str,
+    scheduled_time_iso: Optional[str],
+    target_cfg: Dict[str, Any],
+    posted_keys: Set[Tuple[str, str, str]],
+    logger: logging.Logger,
+) -> bool:
+    """Publish to a single target using platform-specific client helpers.
+
+    Returns True on success, False on failure. Ensures no duplicate post for the
+    same (platform, pageId, media) tuple by checking posted_keys.
+    """
+    platform = str(target_cfg.get("platform", "")).lower()
+    page_id = target_cfg.get("pageId")
+    # Optional account IDs per platform if required by Blotato
+    account_id = None
+    if platform == "tiktok":
+        account_id = os.getenv("TIKTOK_ACCOUNT_ID")
+    elif platform == "youtube":
+        account_id = os.getenv("YOUTUBE_ACCOUNT_ID")
+    elif platform == "instagram":
+        account_id = os.getenv("INSTAGRAM_ACCOUNT_ID")
+    if not platform:
+        logger.warning(f"Skipping target missing platform: {target_cfg}")
+        return False
+    # Dedup key includes platform, pageId (or empty), and hosted media URL
+    dedup_key = (platform, str(page_id or ""), hosted_media_url)
+    if dedup_key in posted_keys:
+        logger.info(f"Skipping duplicate post for {platform} (pageId={page_id})")
+        return True
+    try:
+        if platform == "youtube":
+            resp = await client.publish_youtube_post(
+                account_id=account_id,
+                text=post_text,
+                media_urls=[hosted_media_url],
+                page_id=page_id,
+                scheduled_time_iso=scheduled_time_iso,
+            )
+        elif platform == "instagram":
+            resp = await client.publish_instagram_post(
+                account_id=account_id,
+                text=post_text,
+                media_urls=[hosted_media_url],
+                page_id=page_id,
+                scheduled_time_iso=scheduled_time_iso,
+            )
+        else:
+            # Default to TikTok helper for unknown here if configured that way
+            resp = await client.publish_tiktok_post(
+                account_id=account_id,
+                text=post_text,
+                media_urls=[hosted_media_url],
+                page_id=page_id,
+                scheduled_time_iso=scheduled_time_iso,
+            )
+        posted_keys.add(dedup_key)
+        logger.info(f"Published via Blotato to {platform}: {resp}")
+        return True
+    except Exception as e:
+        logger.error(f"Blotato post failed for {platform}: {e}")
+        raise RuntimeError(f"Publish failed for {platform}") from e
+
+
+async def build_hashtags(
+    openai_client: Any,
+    src: Optional[str],
+    platform: Optional[str] = None,
+) -> str:
+    """Generate discovery-oriented hashtags using OpenAI (with override and fallback).
+
+    - If BLOTATO_HASHTAGS is set (comma-separated), use that.
+    - Else use OpenAI to generate platform-appropriate tags.
+    - Fallback to simple extraction if OpenAI fails.
+    """
+    override = os.getenv("BLOTATO_HASHTAGS")
+    if override:
+        tags = [f"#{t.strip().lstrip('#')}" for t in override.split(",") if t.strip()]
+        return " ".join(dict.fromkeys(tags))[:200]
+    if not src:
+        return "#ai #viral #shorts"
+    try:
+        plat = (platform or os.getenv("DEFAULT_PLATFORM") or "tiktok").lower()
+        tags = await generate_trending_hashtags(openai_client, plat, src)
+        tags = [f"#{t}" for t in tags]
+        return " ".join(dict.fromkeys(tags))[:200]
+    except Exception:
+        words = [
+            w.strip().lower() for w in src.replace("\n", " ").split(" ") if w.strip()
+        ]
+        words = ["".join(ch for ch in w if ch.isalnum()) for w in words]
+        words = [w for w in words if len(w) >= 4][:5]
+        defaults = ["ai", "viral", "shorts"]
+        uniq: list[str] = []
+        for w in words + defaults:
+            tag = f"#{w}"
+            if w and tag not in uniq:
+                uniq.append(tag)
+        return " ".join(uniq)[:200]
 
 
 async def run_pipeline_v2(openai_client: Any) -> bool:
@@ -87,149 +191,64 @@ async def run_pipeline_v2(openai_client: Any) -> bool:
             f"{prompt[:180]}" if isinstance(prompt, str) else "AI Generated"
         )
 
-        async def build_hashtags(src: str | None, platform: str | None = None) -> str:
-            override = os.getenv("BLOTATO_HASHTAGS")
-            if override:
-                tags = [
-                    f"#{t.strip().lstrip('#')}"
-                    for t in override.split(",")
-                    if t.strip()
-                ]
-                return " ".join(dict.fromkeys(tags))[:200]
-            if not src:
-                return "#ai #viral #shorts"
-            # Try OpenAI trending hashtags per platform
-            try:
-                plat = (platform or os.getenv("DEFAULT_PLATFORM") or "tiktok").lower()
-                tags = await generate_trending_hashtags(openai_client, plat, src)
-                tags = [f"#{t}" for t in tags]
-                return " ".join(dict.fromkeys(tags))[:200]
-            except Exception:
-                # Fallback simple extraction
-                words = [
-                    w.strip().lower()
-                    for w in src.replace("\n", " ").split(" ")
-                    if w.strip()
-                ]
-                words = ["".join(ch for ch in w if ch.isalnum()) for w in words]
-                words = [w for w in words if len(w) >= 4][:5]
-                defaults = ["ai", "viral", "shorts"]
-                uniq = []
-                for w in words + defaults:
-                    tag = f"#{w}"
-                    if w and tag not in uniq:
-                        uniq.append(tag)
-                return " ".join(uniq)[:200]
-
         hashtags = await build_hashtags(
-            prompt if isinstance(prompt, str) else base_text
+            openai_client,
+            prompt if isinstance(prompt, str) else base_text,
         )
         post_text = f"{base_text}\n\n{hashtags}".strip()
         scheduled_time_iso = os.getenv("BLOTATO_SCHEDULED_TIME")  # optional ISO8601
 
         targets_raw = os.getenv("BLOTATO_TARGETS")
         tasks: List[Any] = []
-        if targets_raw:
-            try:
-                # Primary: JSON array form
-                targets_list: List[Dict[str, Any]] = json.loads(targets_raw)
-            except Exception:
-                # Fallback: comma-separated platforms (use shared BLOTATO_ACCOUNT_ID / per-platform ACCOUNT envs if provided)
-                platforms = [p.strip().lower() for p in targets_raw.split(",") if p.strip()]
-                if not platforms:
-                    logger.error("BLOTATO_TARGETS provided but empty after parsing.")
-                    return False
+        if not targets_raw:
+            raise ValueError("BLOTATO_TARGETS is not set")
 
-                targets_list = []
-                for platform in platforms:
-                    # Do not use or require any accountId env variables; rely on Blotato defaults
-                    page_id = os.getenv(f"BLOTATO_PAGE_ID_{platform.upper()}") or os.getenv("BLOTATO_PAGE_ID")
-                    targets_list.append({"platform": platform, "pageId": page_id})
+            # Primary: JSON array form
+        targets_list: List[Dict[str, Any]] = json.loads(targets_raw)
 
-            # Deduplicate targets to avoid double publishes (by platform + pageId)
-            deduped: List[Dict[str, Any]] = []
-            seen_keys = set()
-            for t in targets_list:
-                key = (str(t.get("platform", "")).lower(), str(t.get("pageId") or ""))
-                if key in seen_keys:
-                    continue
-                seen_keys.add(key)
-                deduped.append(t)
-            targets_list = deduped
+        # Deduplicate targets to avoid double publishes (by platform + pageId)
+        deduped: List[Dict[str, Any]] = []
+        seen_keys = set()
+        for t in targets_list:
+            key = (str(t.get("platform", "")).lower(), str(t.get("pageId") or ""))
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            deduped.append(t)
+        targets_list = deduped
 
-            # In-run dedup to prevent double publishes (same platform/page/media)
-            posted_keys: set[tuple[str, str, str]] = set()
+        # In-run dedup to prevent double publishes (same platform/page/media)
+        posted_keys: set[tuple[str, str, str]] = set()
 
-            async def post_one(target_cfg: Dict[str, Any]) -> bool:
-                platform = str(target_cfg.get("platform", "")).lower()
-                page_id = target_cfg.get("pageId")
-                # Optional account IDs per platform if required by Blotato
-                account_id = None
-                if platform == "tiktok":
-                    account_id = os.getenv("TIKTOK_ACCOUNT_ID")
-                elif platform == "youtube":
-                    account_id = os.getenv("YOUTUBE_ACCOUNT_ID")
-                elif platform == "instagram":
-                    account_id = os.getenv("INSTAGRAM_ACCOUNT_ID")
-                if not platform:
-                    logger.warning(f"Skipping target missing platform: {target_cfg}")
-                    return False
-                # Dedup key includes platform, pageId (or empty), and hosted media URL
-                dedup_key = (platform, str(page_id or ""), hosted_media_url)
-                if dedup_key in posted_keys:
-                    logger.info(
-                        f"Skipping duplicate post for {platform} (pageId={page_id})"
-                    )
-                    return True
-                target = BlotatoPostTarget(targetType=platform, pageId=page_id)
-                try:
-                    resp = await client.publish_post(
-                        account_id=account_id,
-                        platform=platform,
-                        text=post_text,
-                        media_urls=[hosted_media_url],
-                        target=target,
-                    )
-                    posted_keys.add(dedup_key)
-                    logger.info(f"Published via Blotato to {platform}: {resp}")
-                    return True
-                except Exception as e:
-                    logger.error(f"Blotato post failed for {platform}: {e}")
-                    raise RuntimeError(f"Publish failed for {platform}") from e
-
-            for t in targets_list:
-                tasks.append(post_one(t))
+        for t in targets_list:
+            tasks.append(
+                post_one(
+                    client,
+                    hosted_media_url=hosted_media_url,
+                    post_text=post_text,
+                    scheduled_time_iso=scheduled_time_iso,
+                    target_cfg=t,
+                    posted_keys=posted_keys,
+                    logger=logger,
+                )
+            )
         else:
-            # Fallback to single target via envs
-            target_platform = os.getenv("BLOTATO_PLATFORM", "tiktok").lower()
-            target = BlotatoPostTarget(targetType=target_platform, pageId=os.getenv("BLOTATO_PAGE_ID"))
+            # Fallback to single target via envs: reuse the common post_one helper
+            target_platform = os.getenv("BLOTATO_PLATFORM", "instagram").lower()
+            page_id = os.getenv("BLOTATO_PAGE_ID")
 
-            async def post_single() -> bool:
-                # Optional account IDs per platform if required by Blotato
-                if target_platform == "tiktok":
-                    account_id = os.getenv("TIKTOK_ACCOUNT_ID")
-                elif target_platform == "youtube":
-                    account_id = os.getenv("YOUTUBE_ACCOUNT_ID")
-                elif target_platform == "instagram":
-                    account_id = os.getenv("INSTAGRAM_ACCOUNT_ID")
-                else:
-                    account_id = None
-                try:
-                    resp = await client.publish_post(
-                        account_id=account_id,
-                        platform=target_platform,
-                        text=post_text,
-                        media_urls=[hosted_media_url],
-                        target=target,
-                        scheduled_time_iso=scheduled_time_iso,
-                    )
-                    logger.info(f"Published via Blotato: {resp}")
-                    return True
-                except Exception as e:
-                    logger.error(f"Blotato post failed: {e}")
-                    raise RuntimeError("Publish failed for single target") from e
+            async def single_post() -> bool:
+                return await post_one(
+                    client,
+                    hosted_media_url=hosted_media_url,
+                    post_text=post_text,
+                    scheduled_time_iso=scheduled_time_iso,
+                    target_cfg={"platform": target_platform, "pageId": page_id},
+                    posted_keys=set(),
+                    logger=logger,
+                )
 
-            tasks.append(post_single())
+            tasks.append(single_post())
 
         if tasks:
             results = await asyncio.gather(*tasks)

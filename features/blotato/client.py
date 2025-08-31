@@ -183,66 +183,6 @@ class BlotatoClient:
             if target.pageId:
                 target_payload["pageId"] = target.pageId
 
-        # Provider-specific required fields
-        if platform == "youtube":
-            # Required by Blotato for YouTube
-            yt_title = (
-                os.getenv("BLOTATO_YOUTUBE_TITLE")
-                or content.get("text")
-                or "AI Generated"
-            )
-            yt_privacy = (
-                os.getenv("BLOTATO_YOUTUBE_PRIVACY_STATUS") or "public"
-            ).lower()
-            yt_notify_str = (
-                (os.getenv("BLOTATO_YOUTUBE_NOTIFY_SUBSCRIBERS") or "false")
-                .strip()
-                .lower()
-            )
-            yt_notify = yt_notify_str in {"1", "true", "yes", "y"}
-
-            target_payload["title"] = yt_title[:100]
-            target_payload["privacyStatus"] = yt_privacy
-            target_payload["shouldNotifySubscribers"] = yt_notify
-        elif platform == "tiktok":
-            # Required by Blotato for TikTok
-            raw_privacy = (
-                (os.getenv("BLOTATO_TIKTOK_PRIVACY_LEVEL") or "public").strip().lower()
-            )
-            privacy_map = {
-                "public": "PUBLIC_TO_EVERYONE",
-                "everyone": "PUBLIC_TO_EVERYONE",
-                "self_only": "SELF_ONLY",
-                "private": "SELF_ONLY",
-                "friends": "MUTUAL_FOLLOW_FRIENDS",
-                "mutual_friends": "MUTUAL_FOLLOW_FRIENDS",
-                "followers": "FOLLOWER_OF_CREATOR",
-                "follower_of_creator": "FOLLOWER_OF_CREATOR",
-            }
-            tk_privacy = privacy_map.get(raw_privacy, "PUBLIC_TO_EVERYONE")
-
-            def _bool_env(name: str, default: str) -> bool:
-                val = (os.getenv(name) or default).strip().lower()
-                return val in {"1", "true", "yes", "y"}
-
-            target_payload["privacyLevel"] = tk_privacy
-            target_payload["disabledComments"] = _bool_env(
-                "BLOTATO_TIKTOK_DISABLED_COMMENTS", "false"
-            )
-            target_payload["disabledDuet"] = _bool_env(
-                "BLOTATO_TIKTOK_DISABLED_DUET", "false"
-            )
-            target_payload["disabledStitch"] = _bool_env(
-                "BLOTATO_TIKTOK_DISABLED_STITCH", "false"
-            )
-            target_payload["isBrandedContent"] = _bool_env(
-                "BLOTATO_TIKTOK_BRANDED_CONTENT", "false"
-            )
-            target_payload["isYourBrand"] = _bool_env(
-                "BLOTATO_TIKTOK_IS_YOUR_BRAND", "false"
-            )
-            target_payload["isAiGenerated"] = True
-
         post_body: Dict[str, Any] = {
             "content": content,
             "target": target_payload,
@@ -286,3 +226,189 @@ class BlotatoClient:
                         await self._sleep_backoff(attempt, eff_backoff)
                         continue
                     raise BlotatoError(f"Network error during publish_post: {e}")
+
+    async def publish_with_target_fields(
+        self,
+        *,
+        account_id: Optional[str],
+        platform: str,
+        text: str,
+        media_urls: List[str],
+        target_fields: Dict[str, Any],
+        scheduled_time_iso: Optional[str] = None,
+        max_retries: int = 3,
+        retry_backoff_base: float = 1.0,
+    ) -> Dict[str, Any]:
+        """Generic publisher that accepts provider-specific target fields.
+
+        This method assembles the full payload and performs the HTTP request.
+        """
+        post_endpoint = f"{self.base_url}/v2/posts"
+        content: Dict[str, Any] = {
+            "text": text,
+            "platform": platform,
+            "mediaUrls": media_urls,
+        }
+        target_payload: Dict[str, Any] = {"targetType": platform}
+        # Merge provided target fields (including optional pageId, privacy, etc.)
+        for k, v in target_fields.items():
+            if v is not None:
+                target_payload[k] = v
+
+        post_body: Dict[str, Any] = {
+            "content": content,
+            "target": target_payload,
+        }
+        if account_id:
+            post_body["accountId"] = account_id
+        payload: Dict[str, Any] = {"post": post_body}
+        if scheduled_time_iso:
+            payload["scheduledTime"] = scheduled_time_iso
+
+        eff_max_retries = int(os.getenv("BLOTATO_MAX_RETRIES", str(max_retries)))
+        eff_backoff = float(
+            os.getenv("BLOTATO_RETRY_BACKOFF_BASE", str(retry_backoff_base))
+        )
+        eff_timeout = float(os.getenv("BLOTATO_TIMEOUT_TOTAL", "90"))
+
+        async with aiohttp.ClientSession(
+            headers=self._headers(),
+            timeout=aiohttp.ClientTimeout(total=eff_timeout),
+        ) as session:
+            attempt = 0
+            while True:
+                attempt += 1
+                try:
+                    async with session.post(
+                        post_endpoint,
+                        headers={**self._headers(), "Content-Type": "application/json"},
+                        json=payload,
+                    ) as resp:
+                        if (
+                            self._should_retry(resp.status)
+                            and attempt <= eff_max_retries
+                        ):
+                            await self._sleep_backoff(attempt, eff_backoff)
+                            continue
+                        await self._raise_for_status(resp)
+                        return await resp.json()
+                except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                    if attempt <= eff_max_retries:
+                        await self._sleep_backoff(attempt, eff_backoff)
+                        continue
+                    raise BlotatoError(
+                        f"Network error during publish_with_target_fields: {e}"
+                    )
+
+    async def publish_youtube_post(
+        self,
+        *,
+        account_id: Optional[str],
+        text: str,
+        media_urls: List[str],
+        page_id: Optional[str] = None,
+        scheduled_time_iso: Optional[str] = None,
+        max_retries: int = 3,
+        retry_backoff_base: float = 1.0,
+    ) -> Dict[str, Any]:
+        """Publish a YouTube post with platform-specific target fields prepared.
+
+        Expects media_urls to contain a single Blotato-hosted URL.
+        """
+        yt_title = os.getenv("BLOTATO_YOUTUBE_TITLE") or text or "AI Generated"
+        yt_privacy = (os.getenv("BLOTATO_YOUTUBE_PRIVACY_STATUS") or "public").lower()
+        yt_notify_str = (
+            (os.getenv("BLOTATO_YOUTUBE_NOTIFY_SUBSCRIBERS") or "false").strip().lower()
+        )
+        yt_notify = yt_notify_str in {"1", "true", "yes", "y"}
+        target_fields = {
+            "pageId": page_id,
+            "title": yt_title[:100],
+            "privacyStatus": yt_privacy,
+            "shouldNotifySubscribers": yt_notify,
+        }
+        return await self.publish_with_target_fields(
+            account_id=account_id,
+            platform="youtube",
+            text=text,
+            media_urls=media_urls,
+            target_fields=target_fields,
+            scheduled_time_iso=scheduled_time_iso,
+            max_retries=max_retries,
+            retry_backoff_base=retry_backoff_base,
+        )
+
+    async def publish_instagram_post(
+        self,
+        *,
+        account_id: Optional[str],
+        text: str,
+        media_urls: List[str],
+        page_id: Optional[str] = None,
+        scheduled_time_iso: Optional[str] = None,
+        max_retries: int = 3,
+        retry_backoff_base: float = 1.0,
+    ) -> Dict[str, Any]:
+        """Publish an Instagram post. No extra target fields are required beyond targetType/pageId."""
+        return await self.publish_with_target_fields(
+            account_id=account_id,
+            platform="instagram",
+            text=text,
+            media_urls=media_urls,
+            target_fields={"pageId": page_id} if page_id else {},
+            scheduled_time_iso=scheduled_time_iso,
+            max_retries=max_retries,
+            retry_backoff_base=retry_backoff_base,
+        )
+
+    async def publish_tiktok_post(
+        self,
+        *,
+        account_id: Optional[str],
+        text: str,
+        media_urls: List[str],
+        page_id: Optional[str] = None,
+        scheduled_time_iso: Optional[str] = None,
+        max_retries: int = 3,
+        retry_backoff_base: float = 1.0,
+    ) -> Dict[str, Any]:
+        """Publish a TikTok post with TikTok-specific target fields handled by publish_post."""
+        raw_privacy = (
+            (os.getenv("BLOTATO_TIKTOK_PRIVACY_LEVEL") or "public").strip().lower()
+        )
+        privacy_map = {
+            "public": "PUBLIC_TO_EVERYONE",
+            "everyone": "PUBLIC_TO_EVERYONE",
+            "self_only": "SELF_ONLY",
+            "private": "SELF_ONLY",
+            "friends": "MUTUAL_FOLLOW_FRIENDS",
+            "mutual_friends": "MUTUAL_FOLLOW_FRIENDS",
+            "followers": "FOLLOWER_OF_CREATOR",
+            "follower_of_creator": "FOLLOWER_OF_CREATOR",
+        }
+        tk_privacy = privacy_map.get(raw_privacy, "PUBLIC_TO_EVERYONE")
+
+        def _b(name: str, default: str) -> bool:
+            v = (os.getenv(name) or default).strip().lower()
+            return v in {"1", "true", "yes", "y"}
+
+        target_fields = {
+            "pageId": page_id,
+            "privacyLevel": tk_privacy,
+            "disabledComments": _b("BLOTATO_TIKTOK_DISABLED_COMMENTS", "false"),
+            "disabledDuet": _b("BLOTATO_TIKTOK_DISABLED_DUET", "false"),
+            "disabledStitch": _b("BLOTATO_TIKTOK_DISABLED_STITCH", "false"),
+            "isBrandedContent": _b("BLOTATO_TIKTOK_BRANDED_CONTENT", "false"),
+            "isYourBrand": _b("BLOTATO_TIKTOK_IS_YOUR_BRAND", "false"),
+            "isAiGenerated": True,
+        }
+        return await self.publish_with_target_fields(
+            account_id=account_id,
+            platform="tiktok",
+            text=text,
+            media_urls=media_urls,
+            target_fields=target_fields,
+            scheduled_time_iso=scheduled_time_iso,
+            max_retries=max_retries,
+            retry_backoff_base=retry_backoff_base,
+        )
