@@ -24,7 +24,7 @@ async def post_one(
     post_text: str,
     scheduled_time_iso: Optional[str],
     target_cfg: Dict[str, Any],
-    posted_keys: Set[Tuple[str, str, str]],
+    posted_keys: Set[Tuple[str, str, str, str]],
     logger: logging.Logger,
 ) -> bool:
     """Publish to a single target using platform-specific client helpers.
@@ -39,16 +39,18 @@ async def post_one(
     if platform == "tiktok":
         account_id = os.getenv("TIKTOK_ACCOUNT_ID")
     elif platform == "youtube":
-        account_id = os.getenv("YOUTUBE_ACCOUNT_ID")
+        account_id = os.getenv("BLOTATO_ACCOUNT_ID_YOUTUBE")
     elif platform == "instagram":
-        account_id = os.getenv("INSTAGRAM_ACCOUNT_ID")
+        account_id = os.getenv("BLOTATO_ACCOUNT_ID_INSTAGRAM")
     if not platform:
         logger.warning(f"Skipping target missing platform: {target_cfg}")
         return False
-    # Dedup key includes platform, pageId (or empty), and hosted media URL
-    dedup_key = (platform, str(page_id or ""), hosted_media_url)
+    # Dedup key includes platform, pageId (or empty), accountId (or empty), and hosted media URL
+    dedup_key = (platform, str(page_id or ""), str(account_id or ""), hosted_media_url)
     if dedup_key in posted_keys:
-        logger.info(f"Skipping duplicate post for {platform} (pageId={page_id})")
+        logger.info(
+            f"Skipping duplicate post for {platform} (pageId={page_id}, accountId={account_id})"
+        )
         return True
     try:
         if platform == "youtube":
@@ -158,14 +160,19 @@ async def run_pipeline_v2(openai_client: Any) -> bool:
         if task_id:
             media_url = await poll_kie_status_for_url(task_id)
 
-        # ALWAYS upload to Blotato once and reuse hosted URL for all platforms
+        # ALWAYS upload to Blotato from public URL; do not use multipart file uploads
         hosted_media_url: str | None = None
         try:
             uploaded = None
             if media_url:
+                logger.info(f"Uploading to Blotato via URL: {media_url}")
                 uploaded = await client.upload_media(url=media_url)
-            elif isinstance(video_path, str):
-                uploaded = await client.upload_media(file_path=video_path)
+            else:
+                logger.error(
+                    "No public media URL available from Kie. Provide TASK_ID so we can poll the URL."
+                )
+                return False
+            logger.info(f"Uploaded media to Blotato: {uploaded}")
             if isinstance(uploaded, dict):
                 hosted_media_url = (
                     uploaded.get("url")
@@ -198,13 +205,17 @@ async def run_pipeline_v2(openai_client: Any) -> bool:
         post_text = f"{base_text}\n\n{hashtags}".strip()
         scheduled_time_iso = os.getenv("BLOTATO_SCHEDULED_TIME")  # optional ISO8601
 
-        targets_raw = os.getenv("BLOTATO_TARGETS")
+        targets_raw = os.getenv("BLOTATO_TARGETS") or ""
         tasks: List[Any] = []
         if not targets_raw:
             raise ValueError("BLOTATO_TARGETS is not set")
 
-            # Primary: JSON array form
-        targets_list: List[Dict[str, Any]] = json.loads(targets_raw)
+        # Require JSON array form only
+        targets_list_any = json.loads(targets_raw)
+        if not isinstance(targets_list_any, list):
+            logger.error("BLOTATO_TARGETS must be a JSON array of targets")
+            return False
+        targets_list: List[Dict[str, Any]] = targets_list_any  # type: ignore
 
         # Deduplicate targets to avoid double publishes (by platform + pageId)
         deduped: List[Dict[str, Any]] = []
@@ -218,7 +229,7 @@ async def run_pipeline_v2(openai_client: Any) -> bool:
         targets_list = deduped
 
         # In-run dedup to prevent double publishes (same platform/page/media)
-        posted_keys: set[tuple[str, str, str]] = set()
+        posted_keys: set[tuple[str, str, str, str]] = set()
 
         for t in targets_list:
             tasks.append(
