@@ -16,8 +16,7 @@ def setup_apis() -> Dict[str, Any]:
     logger = logging.getLogger(__name__)
 
     try:
-        openai_client = openai.AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
-        youtube_service = get_youtube_service()
+        openai_client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         blotato_api_key = os.getenv("BLOTATO_API_KEY")
         blotato_client = (
             BlotatoClient(api_key=blotato_api_key) if blotato_api_key else None
@@ -25,7 +24,6 @@ def setup_apis() -> Dict[str, Any]:
         logger.info("API clients initialized successfully (OpenAI, YouTube, Blotato)")
         return {
             "openai_client": openai_client,
-            "youtube_service": youtube_service,
             "blotato_client": blotato_client,
         }
     except Exception as e:

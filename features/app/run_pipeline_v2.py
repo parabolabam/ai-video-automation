@@ -218,7 +218,14 @@ async def run_pipeline_v2(openai_client: Any) -> bool:
             raise ValueError("BLOTATO_TARGETS is not set")
 
         # Require JSON array form only
-        targets_list_any = json.loads(targets_raw)
+        logger.info(f"BLOTATO_TARGETS raw (first 200 chars): {targets_raw[:200]}")
+        try:
+            targets_list_any = json.loads(targets_raw)
+        except Exception as e:
+            logger.error(
+                f"Failed to parse BLOTATO_TARGETS as JSON: {e}; raw snippet={targets_raw[:200]}"
+            )
+            return False
         if not isinstance(targets_list_any, list):
             logger.error("BLOTATO_TARGETS must be a JSON array of targets")
             return False
