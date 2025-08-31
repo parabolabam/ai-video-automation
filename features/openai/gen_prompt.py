@@ -41,6 +41,8 @@ async def generate_creative_prompt(openai_client: Any) -> str:
 
             Visuals: Photorealistic, high-energy, focused on one continuous, fluid camera motion (like a hyper-lapse or a seamless zoom).
 
+            Captions: Include dynamic, kinetic on-screen captions perfectly synced to the voiceover. Use a bold, modern, and highly readable font. Crucial words from the voiceover script (e.g., the main scientific term, the surprising number) should be emphasized with an effect like a quick scale-up, a color flash, or an animation to enhance viewer retention and impact.
+
             Sound: A short, powerful, trending audio clip with impactful SFX that sync directly to the voiceover and visuals.
 
             Final Instruction: Generate only the video prompt itself, formatted clearly for an AI video generator. Ensure the Voiceover Profile and the full Voiceover Script are prominent components of the prompt you create, and that the script is explicitly written to be fully spoken before the 8-second mark. Do not add any commentary before or after.
