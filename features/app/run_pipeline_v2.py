@@ -243,23 +243,6 @@ async def run_pipeline_v2(openai_client: Any) -> bool:
                     logger=logger,
                 )
             )
-        else:
-            # Fallback to single target via envs: reuse the common post_one helper
-            target_platform = os.getenv("BLOTATO_PLATFORM", "instagram").lower()
-            page_id = os.getenv("BLOTATO_PAGE_ID")
-
-            async def single_post() -> bool:
-                return await post_one(
-                    client,
-                    hosted_media_url=hosted_media_url,
-                    post_text=post_text,
-                    scheduled_time_iso=scheduled_time_iso,
-                    target_cfg={"platform": target_platform, "pageId": page_id},
-                    posted_keys=set(),
-                    logger=logger,
-                )
-
-            tasks.append(single_post())
 
         if tasks:
             results = await asyncio.gather(*tasks)
