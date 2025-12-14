@@ -20,7 +20,7 @@ import { Loader2, Play, AlertCircle } from 'lucide-react';
 import { useState } from 'react';
 
 export function WorkflowsList({ userId }: { userId?: string }) {
-  const { data: workflows, isLoading, error } = trpc.workflow.list.useQuery({ userId: userId || undefined });
+  const { data: workflows, isLoading, error } = trpc.workflow.list.useQuery(userId ? { userId } : undefined);
   const [runningId, setRunningId] = useState<string | null>(null);
   const [openDialogId, setOpenDialogId] = useState<string | null>(null);
   const [inputTopic, setInputTopic] = useState("");
@@ -98,6 +98,11 @@ export function WorkflowsList({ userId }: { userId?: string }) {
                     Open Visualizer
                  </Button>
                </Link>
+                <Link href={`/user/${wf.user_id}/workflow/${wf.id}/edit`}>
+                  <Button size="sm" variant="outline" className="ml-2">
+                    Edit Graph
+                  </Button>
+                </Link>
             </div>
           </CardContent>
         </Card>
