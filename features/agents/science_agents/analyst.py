@@ -1,5 +1,5 @@
 from agents import Agent
-from features.agents.models import ViralContentSelection
+from .models import ViralContentSelection
 
 def create_audience_analyst_agent() -> Agent:
     """Create the Audience Analyst agent."""

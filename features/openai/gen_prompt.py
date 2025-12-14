@@ -57,7 +57,7 @@ async def _generate_extended(openai_client: Any) -> dict[str, Any]:
     
     logger.info(f"Starting extended multi-scene pipeline ({num_scenes} scenes)...")
     
-    from features.agents.science_agents import run_extended_pipeline
+    from features.agents.science_agents.pipeline import run_extended_pipeline
     
     result = await run_extended_pipeline(num_scenes)
     
@@ -76,7 +76,7 @@ async def _generate_with_agents(openai_client: Any) -> dict[str, str]:
     """
     logger.info("Starting multi-agent science research pipeline...")
     
-    from features.agents.science_agents import run_science_research_pipeline
+    from features.agents.science_agents.pipeline import run_science_research_pipeline
     
     # Run the full pipeline - let exceptions propagate
     result = await run_science_research_pipeline()
