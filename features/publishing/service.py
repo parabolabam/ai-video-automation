@@ -30,8 +30,15 @@ class PublishingService:
         # 1. Upload to Blotato (either from URL or local file)
         try:
             if file_path:
-                logger.info(f"Uploading local file to Blotato: {file_path}")
-                uploaded = await self.client.upload_media(file_path=file_path)
+                logger.info(f"Uploading local file to Blotato via Bridge: {file_path}")
+                # Blotato doesn't accept file uploads, so we bridge via file.io
+                bridge_url = await self._upload_to_bridge(file_path)
+                if not bridge_url:
+                    logger.error("Bridge upload failed")
+                    return False
+                    
+                logger.info(f"Bridge URL obtained: {bridge_url}")
+                uploaded = await self.client.upload_media(url=bridge_url)
             elif task_id:
                 # Resolve media URL from Kie
                 media_url = await poll_kie_status_for_url(task_id)
@@ -111,6 +118,37 @@ class PublishingService:
             seen.add(key)
             deduped.append(t)
         return deduped
+
+    async def _upload_to_bridge(self, file_path: str) -> Optional[str]:
+        """Upload file to ephemeral host (tmpfiles.org) to get a public URL for Blotato."""
+        import aiohttp
+        try:
+            url = "https://tmpfiles.org/api/v1/upload"
+            filename = os.path.basename(file_path)
+            
+            async with aiohttp.ClientSession() as session:
+                data = aiohttp.FormData()
+                data.add_field('file', open(file_path, 'rb'), filename=filename)
+                
+                async with session.post(url, data=data) as resp:
+                    if resp.status != 200:
+                        logger.error(f"Bridge upload failed: {resp.status} - {await resp.text()}")
+                        return None
+                        
+                    result = await resp.json()
+                    page_url = result.get("data", {}).get("url")
+                    
+                    if page_url:
+                        # Convert to direct link for Blotato to consume
+                        # https://tmpfiles.org/123/file.mp4 -> https://tmpfiles.org/dl/123/file.mp4
+                        direct_url = page_url.replace("tmpfiles.org/", "tmpfiles.org/dl/")
+                        return direct_url
+                        
+                    logger.error(f"Bridge upload error (no url): {result}")
+                    return None
+        except Exception as e:
+            logger.error(f"Bridge upload exception: {e}")
+            return None
 
     async def _post_one(
         self,

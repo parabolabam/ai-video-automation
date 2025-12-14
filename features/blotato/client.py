@@ -108,28 +108,30 @@ class BlotatoClient:
                             await self._raise_for_status(resp)
                             return await resp.json()
 
-                    # Multipart upload for local files
+                    # Binary upload for local files (multipart rejected by server)
                     assert file_path is not None
                     filename = os.path.basename(file_path)
                     guessed_type, _ = mimetypes.guess_type(filename)
                     content_type = guessed_type or "application/octet-stream"
 
-                    form = aiohttp.FormData()
-                    form.add_field(
-                        name="file",
-                        value=open(file_path, "rb"),
-                        filename=filename,
-                        content_type=content_type,
-                    )
-                    # Ensure we do not send a JSON Content-Type for multipart
+                    # Read file content
+                    with open(file_path, "rb") as f:
+                        file_content = f.read()
+
+                    # Send raw bytes
+                    headers = {
+                        k: v
+                        for k, v in self._headers().items()
+                        if k.lower() != "content-type"
+                    }
+                    headers["Content-Type"] = content_type
+                    # Optional: Add filename header if API supports it
+                    headers["X-Filename"] = filename
+                    
                     async with session.post(
                         media_endpoint,
-                        data=form,
-                        headers={
-                            k: v
-                            for k, v in self._headers().items()
-                            if k.lower() != "content-type"
-                        },
+                        data=file_content,
+                        headers=headers,
                     ) as resp:
                         if (
                             self._should_retry(resp.status)
