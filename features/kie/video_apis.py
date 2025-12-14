@@ -122,7 +122,7 @@ class VideoGenerationAPI:
         url = f"{self.base_url}/veo/extend"
         payload = {
             "taskId": task_id,
-            "prompt": f"{prompt}. Maintain visual consistency, seamless transition.",
+            "prompt": f"Continue the action immediately from the last frame. {prompt}. Smooth transition, do not repeat frames, maintain flow.",
         }
         headers = {
             "Authorization": f"Bearer {self.api_key}",
