@@ -36,12 +36,14 @@ class ContentService:
                 scenes = prompt_result.get("scenes", [])
                 content["scenes"] = scenes
                 content["voiceover_script"] = prompt_result.get("voiceover_script", "")
+                content["sources"] = prompt_result.get("sources", [])
                 content["prompt"] = scenes[0] if scenes else ""
                 logger.info(f"Content generated (Extended): {len(scenes)} scenes")
             else:
                 # Single scene agent pipeline
                 content["prompt"] = prompt_result.get("prompt", "")
                 content["voiceover_script"] = prompt_result.get("voiceover_script", "")
+                content["sources"] = prompt_result.get("sources", [])
                 logger.info("Content generated (Agent Pipeline)")
         else:
             # Direct prompt generation
@@ -79,3 +81,28 @@ class ContentService:
                 tag_string = " ".join(uniq)[:200]
                 
         return f"{text_body}\n\n{tag_string}".strip()
+
+    async def generate_search_tags(self, context_text: str, platform: Optional[str] = None) -> str:
+        """Generate only the hashtag string for a given context."""
+        override = os.getenv("BLOTATO_HASHTAGS")
+        if override:
+            tags = [f"#{t.strip().lstrip('#')}" for t in override.split(",") if t.strip()]
+            tag_string = " ".join(dict.fromkeys(tags))[:200]
+        else:
+            try:
+                plat = (platform or os.getenv("DEFAULT_PLATFORM") or "tiktok").lower()
+                tags = await generate_trending_hashtags(self.openai_client, plat, context_text)
+                tags = [f"#{t}" for t in tags]
+                tag_string = " ".join(dict.fromkeys(tags))[:200]
+            except Exception:
+                # Fallback logic
+                defaults = ["ai", "viral", "shorts"]
+                words = [w.strip().lower() for w in context_text.replace("\n", " ").split(" ") if len(w) >= 4][:5]
+                words = ["".join(ch for ch in w if ch.isalnum()) for w in words]
+                uniq = []
+                for w in words + defaults:
+                    tag = f"#{w}"
+                    if w and tag not in uniq:
+                        uniq.append(tag)
+                tag_string = " ".join(uniq)[:200]
+        return tag_string

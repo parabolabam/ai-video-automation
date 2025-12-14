@@ -30,6 +30,7 @@ class ViralContentSelection(BaseModel):
     visual_concept: str = Field(description="Brief description of how to visualize this")
     hook_phrase: str = Field(description="A compelling 5-word hook")
     reasoning: str = Field(description="Why this fact was selected")
+    sources: List[str] = Field(description="List of source URLs for the selected fact, copied from the validated fact")
 
 class ScriptOutput(BaseModel):
     """Output from the Script Writer."""

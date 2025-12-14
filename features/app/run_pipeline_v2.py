@@ -80,14 +80,23 @@ async def run_pipeline_v2(openai_client: Any) -> bool:
             logger.error("BLOTATO_API_KEY missing, cannot publish")
             return False
             
-        post_text = await content_svc.generate_metadata(prompt or "AI Video")
-        
-        # Append sources to description if available
         sources = content.get("sources", []) if content else []
+        
         if sources:
-            post_text += "\n\nSources / Fact Check:\n"
+            # User request: "include only sources in video description" but WITH hashtags
+            # This replaces the prompt/hashtags entirely with the source list + generated hashtags
+            
+            # Generate relevant hashtags based on the prompt (context)
+            hashtags = await content_svc.generate_search_tags(prompt or "science facts")
+            
+            post_text = "Sources:\n"
             for src in sources:
-                post_text += f"- {src}\n"
+                post_text += f"{src}\n"
+            
+            post_text += f"\n{hashtags}"
+        else:
+            # Fallback to generated metadata if no sources
+            post_text = await content_svc.generate_metadata(prompt or "AI Video")
         
         published = await pub_svc.publish_video(
             task_id=current_task_id,

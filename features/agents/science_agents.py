@@ -113,13 +113,19 @@ async def run_science_research_pipeline() -> dict[str, str]:
         "sources": [] # We need to aggregate sources from validated facts or selection
     }
     
-    # Collect sources from the selected fact (finding matching evaluated fact)
-    # Simple strategy: collect ALL valid sources from evaluator step to ensure coverage
-    all_sources = set()
-    for vf in validated_facts:
-        for src in vf.sources:
-            all_sources.add(src)
-    result["sources"] = list(all_sources)
+    # Collect sources from the selected fact
+    # Priority: Use sources from Analyst output (specific to selected fact)
+    # Fallback: Aggregate from all validated facts
+    final_sources = selection.sources
+    
+    if not final_sources:
+        all_sources = set()
+        for vf in validated_facts:
+            for src in vf.sources:
+                all_sources.add(src)
+        final_sources = list(all_sources)
+        
+    result["sources"] = final_sources
 
     # Step 4: Write voiceover script
     logger.info("Agent 4 (Script Writer): Creating voiceover script...")
@@ -169,6 +175,7 @@ async def run_extended_pipeline(num_scenes: int = 4) -> dict[str, Any]:
     script_writer = create_script_writer_agent(total_duration)
     
     # Initialize sources list
+    # (Will be populated from Analyst output or aggregation)
     sources = []
     
     runner = Runner()
@@ -207,8 +214,8 @@ async def run_extended_pipeline(num_scenes: int = 4) -> dict[str, Any]:
         validated_text = ""
         for vf in validated_facts:
             validated_text += f"- Fact: {vf.fact_text}\n  Scores: Acc={vf.accuracy_score}, Vis={vf.visualizability_score}, Wow={vf.wow_factor_score}\n  Notes: {vf.explanation}\n"
-            for src in vf.sources:
-                sources.append(src) # Collect sources directly from structured output
+            # for src in vf.sources:
+            #     sources.append(src) # Deferred: We'll get specific sources from Analyst
     except Exception as e:
         raise RuntimeError(f"Pipeline step 2 (Evaluator) failed: {e}") from e
     
@@ -226,6 +233,18 @@ async def run_extended_pipeline(num_scenes: int = 4) -> dict[str, Any]:
     
     # Use selected fact
     fact = selection.selected_fact
+    
+    # Get sources from Analyst
+    if selection.sources:
+        sources = selection.sources
+    else:
+        # Fallback: recover sources by matching text or aggregating all
+        # For extended pipeline, we really want specific sources, but aggregation is safe fallback
+        all_s = set()
+        for vf in validated_facts:
+            for s in vf.sources:
+                all_s.add(s)
+        sources = list(all_s)
     
     # Step 4: Plan scenes using structured tool output
     logger.info(f"Agent 4 (Scene Planner): Creating {num_scenes} visual scenes...")

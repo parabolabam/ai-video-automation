@@ -18,6 +18,7 @@ Consider:
 - Broad appeal: Would this interest people outside science enthusiasts?
 
 Select the winning fact and describe the visual concept and hook phrase.
+IMPORTANT: You MUST copy the `sources` list from the selected validated fact into your output `sources` field. This is critical for attribution.
 """,
         tools=[],
     )
