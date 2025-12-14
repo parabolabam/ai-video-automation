@@ -18,6 +18,8 @@ Consider:
 - Broad appeal: Would this interest people outside science enthusiasts?
 
 Select the winning fact and describe the visual concept and hook phrase.
+CRITICAL VISUAL REQUIREMENT: The `visual_concept` MUST be described as "Photorealistic", "Cinematic", "8k", "Documentary Style". 
+AVOID: "cartoon", "CGI", "abstract". We want it to look like real National Geographic footage.
 IMPORTANT: You MUST copy the `sources` list from the selected validated fact into your output `sources` field. This is critical for attribution.
 """,
         tools=[],

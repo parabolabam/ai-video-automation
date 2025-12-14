@@ -32,10 +32,15 @@ CRITICAL FOR NATURAL SPEECH:
 - Include emotional reactions ("Crazy, right?", "Mind-blowing!", "Wild.")
 
 PACING for {duration_seconds} seconds:
-- Word count: {word_count_min}-{word_count_max} words
-- Start with an attention-grabbing hook (2-3s)
-- Build naturally through the explanation
-- End with an impactful closer
+- Word count: {int(duration_seconds * 2.0)}-{int(duration_seconds * 2.3)} words (STRICT LIMIT)
+- CRITICAL: Your narration must finish slightly BEFORE the video cuts.
+- Thoughts must be COMPLETE sentences. Do not trail off.
+- Match cadence to the visual energy.
+
+SCENE SYNC (If multiple scenes):
+- Each thought must complete fully within its corresponding scene time.
+- Do not let sentences run over scene cuts unless intentionally bridging.
+- Ideally, finish the sentence 0.5s before the scene transition.
 
 DO NOT:
 - Sound robotic or overly formal

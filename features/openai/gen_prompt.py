@@ -121,15 +121,16 @@ CRITICAL: You have been generating video descriptions in previous messages. You 
 
 Guidelines:
 - Choose a mind-blowing science fact and visualize it
-- Describe a visually stunning 8-second scene
+- Describe a HYPER-REALISTIC, CINEMATIC 8-second scene (Think IMAX Documentary)
 - Focus on ONE clear scientific concept
 - Be specific about visuals, movement, and mood
 - Keep it concise (2-3 sentences max)
+- STYLE: Photorealistic, 8k, highly detailed, dramatic lighting. NO CGI/CARTOON looks.
 
 Good examples:
-- "A neutron star the size of a city spins 700 times per second, its magnetic field ripping glowing plasma streams across the void in a hypnotic spiral dance."
-- "Inside a single human cell, millions of molecular machines work in perfect synchrony—ribosomes building proteins, mitochondria pulsing with energy, DNA unzipping like a cosmic zipper."
-- "A bullet fired through a soap bubble in ultra-slow motion reveals the bubble doesn't pop instantly—it tears apart in intricate fractal patterns before collapsing."
+- "A photorealistic close-up of a neutron star spinning 700 times per second, accurately rendering the magnetic field ripping glowing plasma streams in a documentary style."
+- "Inside a human cell, captured with a macro lens, organelles move with organic imperfection and texture—not a smooth 3D render, but a biological reality."
+- "A bullet fired through a soap bubble, filmed with a high-speed Phantom Flex camera, showing liquid surface tension tearing with crystal clarity."
 
 Output ONLY the science-focused video description, nothing else."""
 

@@ -49,29 +49,40 @@ Your task is to break down a science fact into {num_scenes} distinct visual scen
 Each scene will be 8 seconds long, for a total of {num_scenes * 8} seconds.
 
 CRITICAL REQUIREMENTS FOR PHOTOREALISM:
-- ALL scenes must look like REAL footage, NOT AI-generated
-- Use REAL-WORLD reference (documentary, nature films, NASA footage style)
-- Describe REAL lighting conditions (golden hour, overcast, studio lighting)
-- Include NATURAL imperfections (lens flares, shallow depth of field, motion blur)
-- Specify REAL camera equipment style (ARRI Alexa, RED camera, macro lens, drone footage)
-- Avoid fantasy, abstract, or obviously CGI descriptions
+- ALL scenes must look like REAL raw footage (GoPro, IMAX, Documentary)
+- Use REAL-WORLD references only (BBC Earth, NASA footage, National Geographic style)
+- Describe REAL lighting imperfections (harsh sunlight, lens flares, chromatic aberration, sensor noise)
+- Specify REAL camera equipment (ARRI Alexa 65, IMAX 70mm, RED V-Raptor, Macro Probe Lens)
+- TEXTURE IS KEY: Mention pores, dust, scratches, organic irregularities. nothing smooth.
+
+NEGATIVE CONSTRAINTS (Visuals to AVOID):
+- NO "smooth", "perfect", "clean", or "glossy" AI looks
+- NO "3d render", "octane render", "unreal engine", or "CGI"
+- NO "cartoon", "illustration", "painting", or "abstract art"
+- NO floating glowing objects unless chemically scientifically accurate
 
 VISUAL CONSISTENCY across all scenes:
-- Same color grading (cinematic, desaturated, warm tones, etc.)
-- Same camera style (handheld, steadicam, locked tripod, etc.)
-- Same aspect ratio feel (anamorphic, widescreen)
-- Seamless flow between scenes
+- Same color grading (Kodak 2383 Film Emulator style, high contrast, natural saturation)
+- Same camera movement (handheld shake for intensity, slow drone for scale)
+VISUAL FLOW & MATCHED CUTS (CRITICAL):
+- Scene transitions must be SEAMLESS.
+- The END frame of Scene N must logically connect to the START frame of Scene N+1.
+- EXAMPLES:
+  * Zoom into a cell -> Next scene starts inside the cell
+  * Dolly past a planet -> Next scene continues movement in space
+  * Focus on an eye -> Next scene is what the eye sees
+- AVOID hard cuts between unrelated angles. Flow like a continuous single-take or matched cuts.
 
 Scene structure:
-- Scene 1: HOOK - Dramatic real-world opening shot
-- Scene 2-{num_scenes-1}: JOURNEY - Documentary-style exploration
-- Scene {num_scenes}: PAYOFF - Stunning conclusion
+- Scene 1: HOOK - Dramatic real-world opening shot (Macro or Wide)
+- Scene 2-{num_scenes-1}: JOURNEY - Documentary-style exploration (Maintains motion/direction of previous scene)
+- Scene {num_scenes}: PAYOFF - Stunning natural conclusion (Resolves the motion)
 
 For EACH scene include:
-1. Specific real-world location or setting
-2. Exact lighting description
-3. Camera movement and lens type
-4. Natural environmental details
+1. Specific real-world location or setting (be tangible)
+2. Exact lighting description (direction, quality, color)
+3. Camera movement and lens type (focal length, depth of field)
+4. Natural environmental details (dust, wind, texture)
 
 Important: You MUST call the submit_scene_plan tool with your scenes to complete the task.
 Pass the scenes as a LIST of strings, e.g. ["Scene 1 description...", "Scene 2 description..."].
