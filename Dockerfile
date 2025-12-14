@@ -1,12 +1,10 @@
-# syntax=docker/dockerfile:1.7
-
 FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim
 
 WORKDIR /app
 
-# System deps (if needed later)
+# System deps (FFmpeg for audio/video composition)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl ca-certificates && rm -rf /var/lib/apt/lists/*
+    curl ca-certificates ffmpeg && rm -rf /var/lib/apt/lists/*
 
 # Copy project files
 COPY pyproject.toml uv.lock ./

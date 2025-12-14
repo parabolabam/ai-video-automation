@@ -1,70 +1,165 @@
 #!/usr/bin/env python3
 """
-Generate creative video prompt using OpenAI
+Generate creative video prompt using multi-agent research pipeline.
+
+Uses a three-agent system:
+1. Researcher - Finds interesting science facts
+2. Evaluator - Validates accuracy
+3. Audience Analyst - Selects the most viral-worthy fact
+
+Then generates a video description using the selected fact.
 """
 
 import logging
+import os
 from datetime import datetime
 from typing import Any, List
 
+from features.openai.conversation_state import (
+    load_previous_response_id,
+    save_response_id,
+)
 
-async def generate_creative_prompt(openai_client: Any) -> str:
-    """Generate a creative video prompt using OpenAI."""
-    logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
+
+
+async def generate_creative_prompt(openai_client: Any) -> str | dict[str, Any]:
+    """Generate a creative video prompt using multi-agent research or direct generation.
+    
+    Modes:
+    - EXTENDED_MODE=true: Multi-scene pipeline (4 scenes, 32s video)
+    - USE_AGENT_PIPELINE=true: Single-scene agent pipeline (8s video)
+    - Neither: Direct OpenAI generation (8s video)
+    
+    Returns:
+        str: Video prompt (if direct generation)
+        dict: {'prompt': str, 'voiceover_script': str} (single scene)
+        dict: {'scenes': list, 'voiceover_script': str, ...} (extended mode)
+    """
+    extended_mode = os.getenv("EXTENDED_MODE", "false").lower() == "true"
+    use_agents = os.getenv("USE_AGENT_PIPELINE", "false").lower() == "true"
+    
+    if extended_mode:
+        return await _generate_extended(openai_client)
+    elif use_agents:
+        return await _generate_with_agents(openai_client)
+    else:
+        return await _generate_direct(openai_client)
+
+
+async def _generate_extended(openai_client: Any) -> dict[str, Any]:
+    """Generate multi-scene video content using extended pipeline.
+    
+    Returns:
+        Dict with 'scenes', 'voiceover_script', 'fact', etc.
+    """
+    num_scenes = int(os.getenv("VIDEO_SCENES", "4"))
+    
+    logger.info(f"Starting extended multi-scene pipeline ({num_scenes} scenes)...")
+    
+    from features.agents.science_agents import run_extended_pipeline
+    
+    result = await run_extended_pipeline(num_scenes)
+    
+    logger.info(f"Extended pipeline generated {len(result.get('scenes', []))} scenes")
+    return result
+
+
+async def _generate_with_agents(openai_client: Any) -> dict[str, str]:
+    """Generate prompt using the multi-agent research pipeline.
+    
+    Returns:
+        Dict with 'prompt' and 'voiceover_script' keys
+        
+    Raises:
+        RuntimeError: If the agent pipeline fails
+    """
+    logger.info("Starting multi-agent science research pipeline...")
+    
+    from features.agents.science_agents import run_science_research_pipeline
+    
+    # Run the full pipeline - let exceptions propagate
+    result = await run_science_research_pipeline()
+    
+    fact = result.get("fact", "")
+    visual = result.get("visual_concept", "")
+    voiceover_script = result.get("voiceover_script", "")
+    
+    if not fact:
+        raise RuntimeError("Agent pipeline returned empty fact")
+    
+    # Combine into a video description
+    if visual:
+        prompt = f"{visual} {fact}"
+    else:
+        prompt = fact
+        
+    logger.info(f"Agent pipeline generated: {prompt[:200]}...")
+    
+    return {
+        "prompt": prompt,
+        "voiceover_script": voiceover_script,
+    }
+
+
+async def _generate_direct(openai_client: Any) -> str:
+    """Generate prompt using direct OpenAI Responses API with conversation continuity."""
     try:
-        logger.info("Generating creative prompt with OpenAI...")
+        logger.info("Generating creative prompt with OpenAI Responses API...")
 
-        system_prompt = """
-           You are an expert viral content strategist and creative director, specializing in crafting hyper-engaging, short-form science content for platforms like TikTok. Your task is to generate a single, complete prompt for an AI video generator. The resulting video must be strictly under 9 seconds and must fuse a stunning visual narrative with an extremely concise and compelling voiceover.
+        # Load previous response ID for conversation continuity
+        previous_response_id = load_previous_response_id()
+        if previous_response_id:
+            logger.info(f"Continuing conversation from response: {previous_response_id[:20]}...")
+        else:
+            logger.info("Starting new conversation (no previous response ID)")
 
-            The prompt you generate must prominently feature the voiceover script and a detailed description of the voice itself.
+        system_prompt = """You are a creative director for viral short-form science content. Generate concise, vivid video descriptions that visualize amazing science facts.
 
-            The generated video prompt must adhere to the following structure:
+CRITICAL: You have been generating video descriptions in previous messages. You MUST create something COMPLETELY DIFFERENT from anything you've generated before. Never repeat topics, subjects, or similar scientific concepts.
 
-            Core Science Fact: Select a simple, shocking, and visually representable fact that can be fully explained in a single, short sentence.
+Guidelines:
+- Choose a mind-blowing science fact and visualize it
+- Describe a visually stunning 8-second scene
+- Focus on ONE clear scientific concept
+- Be specific about visuals, movement, and mood
+- Keep it concise (2-3 sentences max)
 
-            The Voiceover Profile: The prompt must include a detailed description of the voiceover, specifying its Pace, Tone, and Character.
+Good examples:
+- "A neutron star the size of a city spins 700 times per second, its magnetic field ripping glowing plasma streams across the void in a hypnotic spiral dance."
+- "Inside a single human cell, millions of molecular machines work in perfect synchrony—ribosomes building proteins, mitochondria pulsing with energy, DNA unzipping like a cosmic zipper."
+- "A bullet fired through a soap bubble in ultra-slow motion reveals the bubble doesn't pop instantly—it tears apart in intricate fractal patterns before collapsing."
 
-            Crucial Constraint: The voiceover script must be meticulously crafted so that all information is delivered clearly and impactfully in under 8 seconds.
-
-            Example: "Pace: Rapid but articulate. Tone: Awe-filled and conspiratorial, as if sharing a mind-blowing secret. Character: A modern science communicator, energetic and full of passion."
-
-            The Video Structure & Script:
-
-            Instant Hook (0 - 1.5 seconds): An arresting visual opens. The voiceover begins immediately with an intriguing hook line.
-
-            Synced Reveal (1.5 - 8 seconds): A single, seamless, and rapid visual transformation unfolds. The voiceover script, explaining the science fact, must be timed to perfectly synchronize with the key moments of this visual sequence. The entire voiceover script you write must be delivered within this 6.5-second window.
-
-            Final Beat (8 - 8.9 seconds): The voiceover has completely finished. A final impactful visual is left on screen, punctuated by a sharp sound effect and a quick, bold text overlay that reinforces the fact.
-
-            Audio-Visual Style:
-
-            Visuals: Photorealistic, high-energy, focused on one continuous, fluid camera motion (like a hyper-lapse or a seamless zoom).
-
-            Captions: Include dynamic, kinetic on-screen captions perfectly synced to the voiceover. Use a bold, modern, and highly readable font. Crucial words from the voiceover script (e.g., the main scientific term, the surprising number) should be emphasized with an effect like a quick scale-up, a color flash, or an animation to enhance viewer retention and impact.
-
-            Sound: A short, powerful, trending audio clip with impactful SFX that sync directly to the voiceover and visuals.
-
-            Final Instruction: Generate only the video prompt itself, formatted clearly for an AI video generator. Ensure the Voiceover Profile and the full Voiceover Script are prominent components of the prompt you create, and that the script is explicitly written to be fully spoken before the 8-second mark. Do not add any commentary before or after.
-        """
+Output ONLY the science-focused video description, nothing else."""
 
         user_prompt = (
-            f"Generate a creative video prompt for today ({datetime.now().strftime('%Y-%m-%d')}). "
-            f"Make it unique and engaging."
+            f"Generate a unique video description for today ({datetime.now().strftime('%Y-%m-%d')}). "
+            f"Make it visually stunning and DIFFERENT from all previous descriptions in our conversation."
         )
 
-        response = await openai_client.chat.completions.create(
-            model="gpt-4.1",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            max_tokens=4600,
-            temperature=0.8,
-        )
+        # Use Responses API with previous_response_id for stateful conversation
+        response_params = {
+            "model": os.getenv("OPENAI_MODEL", "gpt-4o"),
+            "instructions": system_prompt,
+            "input": user_prompt,
+            "max_output_tokens": 4600,
+            "temperature": 0.8,
+        }
+        
+        # Add previous response ID if available for conversation continuity
+        if previous_response_id:
+            response_params["previous_response_id"] = previous_response_id
 
-        prompt = response.choices[0].message.content.strip()
-        logger.info(f"Generated prompt: {prompt}")
+        response = await openai_client.responses.create(**response_params)
+
+        # Extract the generated text from the response
+        prompt = response.output_text.strip()
+        logger.info(f"Generated prompt: {prompt[:200]}...")
+
+        # Save response ID for next run
+        save_response_id(response.id)
+        logger.info(f"Saved response ID for conversation continuity: {response.id[:20]}...")
+
         return prompt
 
     except Exception as e:
@@ -87,7 +182,6 @@ async def generate_trending_hashtags(
 
     Output is a small list (5-12) of concise, high-signal tags without the leading '#'.
     """
-    logger = logging.getLogger(__name__)
     try:
         system = (
             "You are a social media growth strategist who crafts concise, high-signal hashtags. "
@@ -99,7 +193,7 @@ async def generate_trending_hashtags(
             "Optimize for discovery and high intent."
         )
         resp = await openai_client.chat.completions.create(
-            model="gpt-4.1-mini",
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},

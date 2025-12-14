@@ -29,10 +29,10 @@ class VideoGenerationAPI:
 
     async def _generate_kie(self, prompt: str, duration: int, quality: str) -> Optional[str]:
         url = f"{self.base_url}/veo/generate"
-        model = "veo3_fast"
+        model = os.getenv("KIE_MODEL", "veo3_fast")  # veo3 or veo3_fast
         payload = {
-            "prompt": f"Vertical 9:16 aspect ratio, {prompt}. High quality, engaging, 8 seconds.",
-            "mode": "fast",
+            "prompt": f"Vertical 9:16 aspect ratio, {prompt}. Photorealistic, cinematic quality.",
+            "mode": quality,
             "duration": duration,
             "aspectRatio": "9:16",
             "model": model
@@ -71,9 +71,9 @@ class VideoGenerationAPI:
     ) -> Optional[str]:
         """Submit a Kie job and return the taskId without polling/download."""
         url = f"{self.base_url}/veo/generate"
-        model = "veo3_fast"
+        model = os.getenv("KIE_MODEL", "veo3_fast")  # veo3 or veo3_fast
         payload = {
-            "prompt": f"Vertical 9:16 aspect ratio, {prompt}. High quality, engaging, 8 seconds.",
+            "prompt": f"Vertical 9:16 aspect ratio, {prompt}. Photorealistic, cinematic quality.",
             "mode": quality,
             "duration": duration,
             "aspectRatio": "9:16",
@@ -103,6 +103,57 @@ class VideoGenerationAPI:
                     logger.warning("Kie response missing taskId: %r", result)
                     return None
                 return job_id
+
+    async def extend_kie_video(
+        self, task_id: str, prompt: str
+    ) -> Optional[str]:
+        """Extend an existing Kie video with new content.
+        
+        Uses Kie's extend-video API to seamlessly add content to an existing video.
+        This maintains style consistency without visible splicing.
+        
+        Args:
+            task_id: The taskId of the original video to extend
+            prompt: Description of how to extend the video
+            
+        Returns:
+            New taskId for the extended video, or None on failure
+        """
+        url = f"{self.base_url}/veo/extend"
+        payload = {
+            "taskId": task_id,
+            "prompt": f"{prompt}. Maintain visual consistency, seamless transition.",
+        }
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        
+        logger.info(f"Extending video {task_id} with prompt: {prompt[:50]}...")
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload, headers=headers) as response:
+                if response.status != 200:
+                    try:
+                        body = await response.text()
+                    except Exception:
+                        body = "<no body>"
+                    logger.warning("Kie extend failed: %s %s", response.status, body)
+                    return None
+                try:
+                    result = await response.json()
+                except Exception:
+                    body = await response.text()
+                    logger.warning("Kie extend returned non-JSON: %s", body)
+                    return None
+                
+                new_task_id = (result.get("data") or {}).get("taskId")
+                if not new_task_id:
+                    logger.warning("Kie extend response missing taskId: %r", result)
+                    return None
+                    
+                logger.info(f"Extension started: new taskId={new_task_id}")
+                return new_task_id
 
     async def _poll_for_completion(self, session: aiohttp.ClientSession, job_id: str, headers: Dict, max_wait_time: int) -> Optional[str]:
         status_url = f"{self.base_url}/veo/record-info?taskId={job_id}"
