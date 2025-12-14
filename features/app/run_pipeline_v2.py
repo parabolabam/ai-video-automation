@@ -82,6 +82,13 @@ async def run_pipeline_v2(openai_client: Any) -> bool:
             
         post_text = await content_svc.generate_metadata(prompt or "AI Video")
         
+        # Append sources to description if available
+        sources = content.get("sources", []) if content else []
+        if sources:
+            post_text += "\n\nSources / Fact Check:\n"
+            for src in sources:
+                post_text += f"- {src}\n"
+        
         published = await pub_svc.publish_video(
             task_id=current_task_id,
             file_path=final_path,

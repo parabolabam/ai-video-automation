@@ -13,259 +13,21 @@ from typing import Any
 
 from agents import Agent, Runner, function_tool
 
-from features.agents.tools import search_web_duckduckgo, search_science_news, verify_science_fact
+from features.agents.researcher import create_researcher_agent
+from features.agents.evaluator import create_evaluator_agent
+from features.agents.analyst import create_audience_analyst_agent
+from features.agents.script_writer import create_script_writer_agent
+from features.agents.scene_planner import (
+    create_scene_planner_agent, 
+    submit_scene_plan, 
+    get_scene_plan_result, 
+    clear_scene_plan_result
+)
 
 logger = logging.getLogger(__name__)
 
-
-# Define tools as function_tools for the agents
-@function_tool
-async def web_search(query: str) -> str:
-    """Search the web for information about a topic.
-    
-    Args:
-        query: The search query to look up
-        
-    Returns:
-        Search results as formatted text
-    """
-    return await search_web_duckduckgo(query, max_results=5)
-
-
-@function_tool
-async def science_news_search(topic: str) -> str:
-    """Search for recent science news and discoveries.
-    
-    Args:
-        topic: The science topic to search for
-        
-    Returns:
-        Recent news and discoveries about the topic
-    """
-    return await search_science_news(topic, days=30)
-
-
-@function_tool
-async def fact_check(claim: str) -> str:
-    """Verify a science claim by searching for corroborating sources.
-    
-    Args:
-        claim: The science claim to verify
-        
-    Returns:
-        Verification results and sources
-    """
-    return await verify_science_fact(claim)
-
-
-# Global storage for scene plan (captured via tool call)
-_scene_plan_result: dict = {}
-
-
-@function_tool
-def submit_scene_plan(style_keywords: str, scenes: list[str]) -> str:
-    """Submit the scene plan with structured data – MUST be called to complete the task.
-    
-    Args:
-        style_keywords: 5 comma-separated style keywords (e.g. "cinematic, photorealistic, 8K, documentary, macro")
-        scenes: List of visual descriptions for each 8-second scene. The number of scenes must match the requested count.
-        
-    Returns:
-        Confirmation message
-    """
-    global _scene_plan_result
-    _scene_plan_result = {
-        "style_keywords": style_keywords,
-        "scenes": scenes
-    }
-    return f"Scene plan submitted successfully with {len(scenes)} scenes."
-
-
-def get_scene_plan_result() -> dict:
-    """Get the scene plan result captured from the tool call."""
-    global _scene_plan_result
-    return _scene_plan_result
-
-
-def clear_scene_plan_result() -> None:
-    """Clear the scene plan result."""
-    global _scene_plan_result
-    _scene_plan_result = {}
-
-
-# Define the three agents
-def create_researcher_agent() -> Agent:
-    """Create the Science Researcher agent."""
-    return Agent(
-        name="ScienceResearcher",
-        model="gpt-4o",
-        instructions="""You are a science researcher specializing in finding fascinating, mind-blowing science facts.
-
-Your task is to find 5 interesting science facts that would make great short-form video content.
-
-Guidelines:
-- Look for facts that are visually representable
-- Focus on topics like: space, physics, biology, chemistry, nature, technology
-- Include both recent discoveries and timeless amazing facts
-- Each fact should be simple enough to explain in 8 seconds
-- Avoid controversial or unverified claims
-
-Use the web_search and science_news_search tools to find facts.
-
-Output format: List exactly 5 facts, each on its own line, with a brief explanation.
-Example:
-1. [FACT]: Neutron stars spin up to 700 times per second. [WHY INTERESTING]: This is faster than a kitchen blender.
-2. [FACT]: Honey never spoils. [WHY INTERESTING]: 3000-year-old honey from Egyptian tombs is still edible.
-...
-""",
-        tools=[web_search, science_news_search],
-    )
-
-
-def create_evaluator_agent() -> Agent:
-    """Create the Fact Evaluator agent."""
-    return Agent(
-        name="FactEvaluator",
-        model="gpt-4o",
-        instructions="""You are a science fact-checker and evaluator.
-
-Your task is to evaluate the science facts provided and filter out any that are:
-- Inaccurate or misleading
-- Exaggerated beyond the truth
-- Not verifiable from reliable sources
-- Too complex to visualize
-
-Use the fact_check tool to verify claims you're unsure about.
-
-For each valid fact, rate its:
-- Accuracy (1-10): How scientifically accurate is this claim?
-- Visualizability (1-10): How easy would this be to show in an 8-second video?
-- Wow Factor (1-10): How surprising/interesting is this to the average person?
-
-Output format: List the validated facts with their scores.
-Only include facts that score at least 7 on accuracy.
-""",
-        tools=[fact_check, web_search],
-    )
-
-
-def create_audience_analyst_agent() -> Agent:
-    """Create the Audience Analyst agent."""
-    return Agent(
-        name="AudienceAnalyst",
-        model="gpt-4o",
-        instructions="""You are a viral content strategist specializing in short-form science content.
-
-Your task is to analyze the validated science facts and select THE SINGLE BEST ONE for a viral TikTok/YouTube Shorts video.
-
-Consider:
-- Viral potential: Would this make people share it?
-- Visual appeal: Can this be shown in a stunning 8-second video?
-- Hook strength: Does this have a "wait, what?!" factor?
-- Broad appeal: Would this interest people outside science enthusiasts?
-
-Output ONLY the winning fact in this exact format:
-
-SELECTED_FACT: [The science fact as a single clear sentence]
-VISUAL_CONCEPT: [Brief 1-2 sentence description of how to visualize this]
-HOOK: [A compelling 5-word hook to start the video]
-""",
-        tools=[],
-    )
-
-def create_script_writer_agent(duration_seconds: int = 8) -> Agent:
-    """Create the Script Writer agent for voiceover narration.
-    
-    Args:
-        duration_seconds: Target duration for the voiceover
-    """
-    # Calculate word count based on duration (approx 2.5-3 words per second)
-    word_count_min = int(duration_seconds * 2.5)
-    word_count_max = int(duration_seconds * 3)
-    
-    return Agent(
-        name="ScriptWriter",
-        model="gpt-4o",
-        instructions=f"""You are a professional voiceover artist writing scripts that sound COMPLETELY NATURAL and HUMAN.
-
-Write a voiceover script for a {duration_seconds}-second science video that sounds like a REAL PERSON talking to a friend - NOT like AI or a robot.
-
-CRITICAL FOR NATURAL SPEECH:
-- Write like you SPEAK, not like you write
-- Use contractions (don't, can't, it's, there's)
-- Include natural filler transitions ("Now,", "See,", "Here's the thing:")
-- Vary sentence length - mix short punchy with longer flowing
-- Add rhetorical questions to create engagement
-- Use everyday vocabulary, avoid jargon
-- Include emotional reactions ("Crazy, right?", "Mind-blowing!", "Wild.")
-
-PACING for {duration_seconds} seconds:
-- Word count: {word_count_min}-{word_count_max} words
-- Start with an attention-grabbing hook (2-3s)
-- Build naturally through the explanation
-- End with an impactful closer
-
-DO NOT:
-- Sound robotic or overly formal
-- Use AI-typical phrases like "In conclusion" or "It's worth noting"
-- Be monotonous - vary the emotional energy
-- Use too many [Pause] markers - just 1-2 max
-- NEVER include "Scene 1", "Scene 2", or any metadata labels
-- NEVER mention scenes, sections, or timestamps in the spoken text
-- Output ONLY what should be SPOKEN aloud - no headers or labels
-
-Output ONLY in this format:
-
-VOICEOVER_SCRIPT: [Natural, conversational script that sounds human, {word_count_min}-{word_count_max} words - NO scene labels or metadata]
-""",
-        tools=[],
-    )
-
-
-def create_scene_planner_agent(num_scenes: int = 4) -> Agent:
-    """Create the Scene Planner agent for multi-scene videos.
-    
-    Args:
-        num_scenes: Number of scenes to generate (default 4 for ~32s video)
-    """
-    return Agent(
-        name="ScenePlanner",
-        model="gpt-4o",
-        instructions=f"""You are a Hollywood cinematographer creating HYPER-REALISTIC science videos.
-
-Your task is to break down a science fact into {num_scenes} distinct visual scenes.
-Each scene will be 8 seconds long, for a total of {num_scenes * 8} seconds.
-
-CRITICAL REQUIREMENTS FOR PHOTOREALISM:
-- ALL scenes must look like REAL footage, NOT AI-generated
-- Use REAL-WORLD reference (documentary, nature films, NASA footage style)
-- Describe REAL lighting conditions (golden hour, overcast, studio lighting)
-- Include NATURAL imperfections (lens flares, shallow depth of field, motion blur)
-- Specify REAL camera equipment style (ARRI Alexa, RED camera, macro lens, drone footage)
-- Avoid fantasy, abstract, or obviously CGI descriptions
-
-VISUAL CONSISTENCY across all scenes:
-- Same color grading (cinematic, desaturated, warm tones, etc.)
-- Same camera style (handheld, steadicam, locked tripod, etc.)
-- Same aspect ratio feel (anamorphic, widescreen)
-- Seamless flow between scenes
-
-Scene structure:
-- Scene 1: HOOK - Dramatic real-world opening shot
-- Scene 2-{num_scenes-1}: JOURNEY - Documentary-style exploration
-- Scene {num_scenes}: PAYOFF - Stunning conclusion
-
-For EACH scene include:
-1. Specific real-world location or setting
-2. Exact lighting description
-3. Camera movement and lens type
-4. Natural environmental details
-
-Important: You MUST call the submit_scene_plan tool with your scenes to complete the task.
-Pass the scenes as a LIST of strings, e.g. ["Scene 1 description...", "Scene 2 description..."].
-Do not output text - call the tool with the structured arguments.""",
-        tools=[submit_scene_plan],
-    )
+# NOTE: Functions for creating agents have been moved to their respective files.
+# science_agents.py now acts as the pipeline orchestrator.
 
 
 async def run_science_research_pipeline() -> dict[str, str]:
@@ -295,10 +57,14 @@ async def run_science_research_pipeline() -> dict[str, str]:
             researcher,
             "Find 5 mind-blowing science facts that would make great viral video content. Use web search to find real, verified facts."
         )
-        facts = research_result.final_output
-        if not facts or len(facts) < 50:
-            raise ValueError(f"Researcher returned insufficient output: {facts}")
-        logger.info(f"Researcher found facts: {facts[:200]}...")
+        # Structured output: research_result.final_output is ResearcherOutput
+        facts_list = research_result.final_output.facts
+        if not facts_list:
+            raise ValueError(f"Researcher returned empty list")
+        
+        # Serialize facts for formatting to next agent
+        facts_text = "\n".join([f"{i+1}. [FACT]: {f.fact_text} [WHY INTERESTING]: {f.explanation}" for i, f in enumerate(facts_list)])
+        logger.info(f"Researcher found {len(facts_list)} facts.")
     except Exception as e:
         logger.error(f"Researcher agent failed: {e}")
         raise RuntimeError(f"Pipeline step 1 (Researcher) failed: {e}") from e
@@ -308,12 +74,19 @@ async def run_science_research_pipeline() -> dict[str, str]:
     try:
         eval_result = await runner.run(
             evaluator,
-            f"Evaluate these science facts for accuracy and visual potential:\n\n{facts}"
+            f"Evaluate these science facts for accuracy and visual potential:\n\n{facts_text}"
         )
-        validated_facts = eval_result.final_output
-        if not validated_facts or len(validated_facts) < 50:
-            raise ValueError(f"Evaluator returned insufficient output: {validated_facts}")
-        logger.info(f"Evaluator validated: {validated_facts[:200]}...")
+        # Structured output: eval_result.final_output is EvaluatorOutput
+        validated_facts = eval_result.final_output.validated_facts
+        if not validated_facts:
+            raise ValueError(f"Evaluator returned empty list")
+            
+        logger.info(f"Evaluator validated {len(validated_facts)} facts.")
+        
+        # Serialize for next agent
+        validated_text = ""
+        for vf in validated_facts:
+            validated_text += f"- Fact: {vf.fact_text}\n  Scores: Acc={vf.accuracy_score}, Vis={vf.visualizability_score}, Wow={vf.wow_factor_score}\n  Notes: {vf.explanation}\n"
     except Exception as e:
         logger.error(f"Evaluator agent failed: {e}")
         raise RuntimeError(f"Pipeline step 2 (Evaluator) failed: {e}") from e
@@ -323,36 +96,31 @@ async def run_science_research_pipeline() -> dict[str, str]:
     try:
         analyst_result = await runner.run(
             analyst,
-            f"Select the single best science fact for a viral video from these validated facts:\n\n{validated_facts}"
+            f"Select the single best science fact for a viral video from these validated facts:\n\n{validated_text}"
         )
-        final_selection = analyst_result.final_output
-        if not final_selection:
-            raise ValueError("Analyst returned empty output")
-        logger.info(f"Analyst selected: {final_selection}")
+        # Structured output: analyst_result.final_output is ViralContentSelection
+        selection = analyst_result.final_output
+        logger.info(f"Analyst selected: {selection.selected_fact}")
     except Exception as e:
         logger.error(f"Analyst agent failed: {e}")
         raise RuntimeError(f"Pipeline step 3 (Analyst) failed: {e}") from e
     
-    # Parse the analyst output
     result = {
-        "fact": "",
-        "visual_concept": "",
-        "hook": "",
+        "fact": selection.selected_fact,
+        "visual_concept": selection.visual_concept,
+        "hook": selection.hook_phrase,
         "voiceover_script": "",
-        "raw_output": final_selection
+        "sources": [] # We need to aggregate sources from validated facts or selection
     }
     
-    for line in final_selection.split("\n"):
-        if line.startswith("SELECTED_FACT:"):
-            result["fact"] = line.replace("SELECTED_FACT:", "").strip()
-        elif line.startswith("VISUAL_CONCEPT:"):
-            result["visual_concept"] = line.replace("VISUAL_CONCEPT:", "").strip()
-        elif line.startswith("HOOK:"):
-            result["hook"] = line.replace("HOOK:", "").strip()
-    
-    if not result["fact"]:
-        raise ValueError(f"Failed to parse SELECTED_FACT from output: {final_selection[:200]}")
-    
+    # Collect sources from the selected fact (finding matching evaluated fact)
+    # Simple strategy: collect ALL valid sources from evaluator step to ensure coverage
+    all_sources = set()
+    for vf in validated_facts:
+        for src in vf.sources:
+            all_sources.add(src)
+    result["sources"] = list(all_sources)
+
     # Step 4: Write voiceover script
     logger.info("Agent 4 (Script Writer): Creating voiceover script...")
     try:
@@ -360,20 +128,11 @@ async def run_science_research_pipeline() -> dict[str, str]:
             script_writer,
             f"Write a voiceover script for this science video:\n\nFact: {result['fact']}\nVisual concept: {result['visual_concept']}\nHook phrase: {result['hook']}"
         )
-        script_output = script_result.final_output
-        if not script_output:
-            raise ValueError("Script Writer returned empty output")
+        # Structured output: script_result.final_output is ScriptOutput
+        script_data = script_result.final_output
+        result["voiceover_script"] = script_data.voiceover_script
         
-        # Parse voiceover script
-        for line in script_output.split("\n"):
-            if line.startswith("VOICEOVER_SCRIPT:"):
-                result["voiceover_script"] = line.replace("VOICEOVER_SCRIPT:", "").strip()
-        
-        if not result["voiceover_script"]:
-            # Fallback: use the whole output as script
-            result["voiceover_script"] = script_output.strip()
-        
-        logger.info(f"Script Writer created: {result['voiceover_script']}")
+        logger.info(f"Script Writer created script ({len(result['voiceover_script'])} chars)")
     except Exception as e:
         logger.error(f"Script Writer agent failed: {e}")
         raise RuntimeError(f"Pipeline step 4 (Script Writer) failed: {e}") from e
@@ -409,6 +168,9 @@ async def run_extended_pipeline(num_scenes: int = 4) -> dict[str, Any]:
     scene_planner = create_scene_planner_agent(num_scenes)
     script_writer = create_script_writer_agent(total_duration)
     
+    # Initialize sources list
+    sources = []
+    
     runner = Runner()
     
     # Steps 1-3: Same as regular pipeline (research, evaluate, select)
@@ -418,21 +180,35 @@ async def run_extended_pipeline(num_scenes: int = 4) -> dict[str, Any]:
             researcher,
             "Find 5 mind-blowing science facts that would make great viral video content. Use web search to find real, verified facts."
         )
-        facts = research_result.final_output
-        if not facts or len(facts) < 50:
-            raise ValueError(f"Researcher returned insufficient output")
-        logger.info(f"Researcher found facts: {facts[:200]}...")
+        # Structured output
+        facts_list = research_result.final_output.facts
+        if not facts_list:
+            raise ValueError(f"Researcher returned empty list")
+        
+        # Serialize facts
+        facts_text = "\n".join([f"{i+1}. [FACT]: {f.fact_text} [WHY INTERESTING]: {f.explanation}" for i, f in enumerate(facts_list)])
+        logger.info(f"Researcher found {len(facts_list)} facts.")
     except Exception as e:
         raise RuntimeError(f"Pipeline step 1 (Researcher) failed: {e}") from e
     
+
     logger.info("Agent 2 (Evaluator): Validating facts...")
     try:
         eval_result = await runner.run(
             evaluator,
-            f"Evaluate these science facts for accuracy and visual potential:\n\n{facts}"
+            f"Evaluate these science facts for accuracy and visual potential:\n\n{facts_text}"
         )
-        validated_facts = eval_result.final_output
-        logger.info(f"Evaluator validated: {validated_facts[:200]}...")
+        # Structured output
+        validated_facts = eval_result.final_output.validated_facts
+        if not validated_facts:
+             raise ValueError(f"Evaluator returned empty list")
+             
+        # Serialize for next agent
+        validated_text = ""
+        for vf in validated_facts:
+            validated_text += f"- Fact: {vf.fact_text}\n  Scores: Acc={vf.accuracy_score}, Vis={vf.visualizability_score}, Wow={vf.wow_factor_score}\n  Notes: {vf.explanation}\n"
+            for src in vf.sources:
+                sources.append(src) # Collect sources directly from structured output
     except Exception as e:
         raise RuntimeError(f"Pipeline step 2 (Evaluator) failed: {e}") from e
     
@@ -440,20 +216,16 @@ async def run_extended_pipeline(num_scenes: int = 4) -> dict[str, Any]:
     try:
         analyst_result = await runner.run(
             analyst,
-            f"Select the single best science fact for a viral video:\n\n{validated_facts}"
+            f"Select the single best science fact for a viral video:\n\n{validated_text}"
         )
+        # Structured output
         selection = analyst_result.final_output
-        logger.info(f"Analyst selected: {selection[:200]}...")
+        logger.info(f"Analyst selected: {selection.selected_fact}")
     except Exception as e:
         raise RuntimeError(f"Pipeline step 3 (Analyst) failed: {e}") from e
     
-    # Parse fact
-    fact = ""
-    for line in selection.split("\n"):
-        if line.startswith("SELECTED_FACT:"):
-            fact = line.replace("SELECTED_FACT:", "").strip()
-    if not fact:
-        fact = selection.split("\n")[0]  # Fallback
+    # Use selected fact
+    fact = selection.selected_fact
     
     # Step 4: Plan scenes using structured tool output
     logger.info(f"Agent 4 (Scene Planner): Creating {num_scenes} visual scenes...")
@@ -515,15 +287,9 @@ CRITICAL: Your voiceover must describe and enhance EXACTLY what's shown in each 
 
 Write the script so audio and video tell the SAME story together."""
         )
-        script_output = script_result.final_output
-        
-        voiceover_script = ""
-        for line in script_output.split("\n"):
-            if line.startswith("VOICEOVER_SCRIPT:"):
-                voiceover_script = line.replace("VOICEOVER_SCRIPT:", "").strip()
-        
-        if not voiceover_script:
-            voiceover_script = script_output.strip()
+        # Structured output
+        script_data = script_result.final_output
+        voiceover_script = script_data.voiceover_script
         
         logger.info(f"Script Writer created: {voiceover_script[:100]}...")
     except Exception as e:
@@ -536,6 +302,7 @@ Write the script so audio and video tell the SAME story together."""
         "voiceover_script": voiceover_script,
         "total_duration": total_duration,
         "num_scenes": len(scenes),
+        "sources": sources
     }
     
     logger.info(f"Extended pipeline complete. {len(scenes)} scenes, {total_duration}s total.")

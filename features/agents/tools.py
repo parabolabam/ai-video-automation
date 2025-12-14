@@ -12,6 +12,47 @@ from ddgs import DDGS
 
 logger = logging.getLogger(__name__)
 
+from agents import function_tool
+
+@function_tool
+async def web_search(query: str) -> str:
+    """Search the web for information about a topic.
+    
+    Args:
+        query: The search query to look up
+        
+    Returns:
+        Search results as formatted text
+    """
+    return await search_web_duckduckgo(query, max_results=5)
+
+
+@function_tool
+async def science_news_search(topic: str) -> str:
+    """Search for recent science news and discoveries.
+    
+    Args:
+        topic: The science topic to search for
+        
+    Returns:
+        Recent news and discoveries about the topic
+    """
+    return await search_science_news(topic, days=30)
+
+
+@function_tool
+async def fact_check(claim: str) -> str:
+    """Verify a science claim by searching for corroborating sources.
+    
+    Args:
+        claim: The science claim to verify
+        
+    Returns:
+        Verification results and sources
+    """
+    return await verify_science_fact(claim)
+
+
 
 class SearchError(Exception):
     """Raised when a search operation fails."""

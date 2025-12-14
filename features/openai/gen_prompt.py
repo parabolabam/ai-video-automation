@@ -99,6 +99,7 @@ async def _generate_with_agents(openai_client: Any) -> dict[str, str]:
     return {
         "prompt": prompt,
         "voiceover_script": voiceover_script,
+        "sources": result.get("sources", [])
     }
 
 
