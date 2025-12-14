@@ -2,14 +2,13 @@
 """
 Web search and research tools for science agents.
 
-Uses DuckDuckGo HTML scraping as the Instant Answer API has rate limits.
+Uses duckduckgo-search library (v8) for reliable searching regarding science facts.
 """
 
 import logging
-import re
 from typing import List
 
-import httpx
+from ddgs import DDGS
 
 logger = logging.getLogger(__name__)
 
@@ -20,9 +19,7 @@ class SearchError(Exception):
 
 
 async def search_web_duckduckgo(query: str, max_results: int = 5) -> str:
-    """Search the web using DuckDuckGo.
-    
-    Uses the HTML endpoint which is more reliable than the JSON API.
+    """Search the web using DuckDuckGo (Sync wrapped in Async).
     
     Args:
         query: Search query
@@ -30,56 +27,31 @@ async def search_web_duckduckgo(query: str, max_results: int = 5) -> str:
         
     Returns:
         Formatted search results as a string
-        
-    Raises:
-        SearchError: If the search fails
     """
     try:
-        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
-            # Use DuckDuckGo HTML lite endpoint
-            response = await client.get(
-                "https://html.duckduckgo.com/html/",
-                params={"q": query},
-                headers={
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-                }
-            )
+        results = []
+        # v8 uses sync context manager
+        with DDGS() as ddgs:
+            search_results = ddgs.text(query, max_results=max_results)
             
-            if response.status_code != 200:
-                raise SearchError(f"DuckDuckGo returned status {response.status_code}")
-            
-            html = response.text
-            
-            # Extract results from HTML (simple regex extraction)
-            results = []
-            
-            # Find result snippets
-            snippets = re.findall(r'class="result__snippet"[^>]*>([^<]+)<', html)
-            titles = re.findall(r'class="result__a"[^>]*>([^<]+)<', html)
-            
-            for i, (title, snippet) in enumerate(zip(titles[:max_results], snippets[:max_results])):
-                title = title.strip()
-                snippet = snippet.strip()
+            if not search_results:
+                raise SearchError(f"No results found for {query}")
+                
+            for res in search_results:
+                title = res.get("title", "")
+                snippet = res.get("body", "")
+                link = res.get("href", "")
                 if title and snippet:
-                    results.append(f"**{title}**: {snippet}")
+                    results.append(f"**{title}** ({link}): {snippet}")
+                    
+        return "\n\n".join(results)
             
-            if not results:
-                # Fallback: try to extract any text content
-                text_content = re.sub(r'<[^>]+>', ' ', html)
-                text_content = re.sub(r'\s+', ' ', text_content)[:500]
-                if "No results" in text_content or not text_content.strip():
-                    raise SearchError(f"No search results found for: {query}")
-                results.append(f"Search summary: {text_content[:300]}...")
-            
-            return "\n".join(results)
-            
-    except httpx.TimeoutException:
-        raise SearchError(f"Search timed out for query: {query}")
-    except httpx.RequestError as e:
-        raise SearchError(f"Search request failed: {e}")
     except Exception as e:
-        if isinstance(e, SearchError):
-            raise
+        logger.error(f"DuckDuckGo search failed: {e}")
+        # Improve error message for known rate limits
+        msg = str(e)
+        if "202" in msg or "Ratelimit" in msg:
+            raise SearchError("DuckDuckGo rate limit or bot detection active.")
         raise SearchError(f"Search failed: {e}")
 
 
@@ -92,12 +64,40 @@ async def search_science_news(topic: str, days: int = 30) -> str:
         
     Returns:
         Formatted news results as a string
-        
-    Raises:
-        SearchError: If the search fails
     """
-    enhanced_query = f"{topic} science discovery research news"
-    return await search_web_duckduckgo(enhanced_query, max_results=8)
+    enhanced_query = f"{topic} science discovery"
+    try:
+        results = []
+        with DDGS() as ddgs:
+            # news() is also sync in v8
+            news_gen = ddgs.news(enhanced_query, max_results=8)
+            
+            # Check if news_gen is empty (it might be a list or generator)
+            # If generator, we can iterate. 
+            # Safest is to list() it if possible, or just iterate.
+            
+            # We try to iterate.
+            found_any = False
+            for res in news_gen:
+                found_any = True
+                title = res.get("title", "")
+                snippet = res.get("body", "")
+                date = res.get("date", "")
+                source = res.get("source", "")
+                if title:
+                    results.append(f"[{date}] **{title}** ({source}): {snippet}")
+            
+            if not found_any:
+                # Fallback to web search
+                 pass
+
+        if not results:
+             return await search_web_duckduckgo(enhanced_query + " news", max_results=5)
+
+        return "\n\n".join(results)
+    except Exception as e:
+        logger.warning(f"News search failed, falling back to web: {e}")
+        return await search_web_duckduckgo(enhanced_query + " news", max_results=5)
 
 
 async def verify_science_fact(claim: str) -> str:
@@ -108,9 +108,6 @@ async def verify_science_fact(claim: str) -> str:
         
     Returns:
         Verification results and sources
-        
-    Raises:
-        SearchError: If the search fails
     """
-    query = f"is it true that {claim} science fact"
+    query = f"is it true that {claim} science fact verify"
     return await search_web_duckduckgo(query, max_results=5)

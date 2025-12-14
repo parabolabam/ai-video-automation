@@ -63,15 +63,12 @@ _scene_plan_result: dict = {}
 
 
 @function_tool
-def submit_scene_plan(style_keywords: str, scene_1: str, scene_2: str, scene_3: str, scene_4: str) -> str:
+def submit_scene_plan(style_keywords: str, scenes: list[str]) -> str:
     """Submit the scene plan with structured data – MUST be called to complete the task.
     
     Args:
         style_keywords: 5 comma-separated style keywords (e.g. "cinematic, photorealistic, 8K, documentary, macro")
-        scene_1: Complete visual description for scene 1 (8 seconds)
-        scene_2: Complete visual description for scene 2 (8 seconds)
-        scene_3: Complete visual description for scene 3 (8 seconds)
-        scene_4: Complete visual description for scene 4 (8 seconds)
+        scenes: List of visual descriptions for each 8-second scene. The number of scenes must match the requested count.
         
     Returns:
         Confirmation message
@@ -79,9 +76,9 @@ def submit_scene_plan(style_keywords: str, scene_1: str, scene_2: str, scene_3: 
     global _scene_plan_result
     _scene_plan_result = {
         "style_keywords": style_keywords,
-        "scenes": [scene_1, scene_2, scene_3, scene_4]
+        "scenes": scenes
     }
-    return "Scene plan submitted successfully."
+    return f"Scene plan submitted successfully with {len(scenes)} scenes."
 
 
 def get_scene_plan_result() -> dict:
@@ -264,7 +261,8 @@ For EACH scene include:
 3. Camera movement and lens type
 4. Natural environmental details
 
-IMPORTANT: You MUST call the submit_scene_plan tool with your scenes to complete the task.
+Important: You MUST call the submit_scene_plan tool with your scenes to complete the task.
+Pass the scenes as a LIST of strings, e.g. ["Scene 1 description...", "Scene 2 description..."].
 Do not output text - call the tool with the structured arguments.""",
         tools=[submit_scene_plan],
     )

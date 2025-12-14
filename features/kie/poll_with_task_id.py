@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 async def poll_with_task_id(task_id: str) -> Optional[str]:
     """Poll Kie by task_id and return the downloaded video path (or None)."""
     logger.info(
-        f"TASK_ID detected: {task_id}. Skipping generation; polling Kie for completion."
+        f"Polling Kie task_id: {task_id}"
     )
     video_path = await poll_kie_status(task_id)
     if not video_path:
