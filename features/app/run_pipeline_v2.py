@@ -25,7 +25,7 @@ async def run_pipeline_v2(openai_client: Any) -> bool:
     if production_mode:
         logger.info("Starting v2 pipeline (PRODUCTION MODE - will publish)...")
     else:
-        logger.info("Starting v2 pipeline (DEV MODE - download only)...")
+        logger.info("Starting v2 pipeline (DEV MODE - agents only)...")
 
     # 2. Initialize Services
     content_svc = ContentService(openai_client)
@@ -54,6 +54,11 @@ async def run_pipeline_v2(openai_client: Any) -> bool:
             voiceover_script = content.get("voiceover_script")
             scenes = content.get("scenes")
             
+            if not production_mode:
+                logger.info("DEV MODE: Content generated. Skipping video generation and upload.")
+                logger.info(f"Generated Content: {content}")
+                return True
+
             video_path, current_task_id = await video_svc.generate_video(prompt, scenes)
             
         if not video_path:
