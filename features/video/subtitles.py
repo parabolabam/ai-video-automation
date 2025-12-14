@@ -15,7 +15,7 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 # Subtitle styling
-DEFAULT_FONT_SIZE = 24
+DEFAULT_FONT_SIZE = 14
 DEFAULT_FONT_COLOR = "white"
 DEFAULT_OUTLINE_COLOR = "black"
 DEFAULT_OUTLINE_WIDTH = 2
@@ -24,7 +24,7 @@ DEFAULT_OUTLINE_WIDTH = 2
 def generate_srt_from_script(
     script: str,
     total_duration: float,
-    words_per_subtitle: int = 5,
+    words_per_subtitle: int = 8,
 ) -> str:
     """Generate SRT subtitle content from a script.
     
@@ -90,7 +90,7 @@ async def burn_subtitles(
     output_path: Optional[str] = None,
     font_size: int = DEFAULT_FONT_SIZE,
     font_color: str = DEFAULT_FONT_COLOR,
-    words_per_subtitle: int = 5,
+    words_per_subtitle: int = 8,
 ) -> str:
     """Burn subtitles into video using FFmpeg.
     
@@ -144,6 +144,10 @@ async def burn_subtitles(
         "-y",
         "-i", video_path,
         "-vf", f"subtitles={srt_file.name}:force_style='{style}'",
+        "-c:v", "libx264", # Explicitly set encoder
+        "-preset", "veryfast", # Faster encoding uses less memory/CPU time
+        "-threads", "2", # Limit threads to reduce memory overhead per thread
+        "-max_muxing_queue_size", "4096", # Prevent OOM on muxing queue
         "-c:a", "copy",
         output_path,
     ]

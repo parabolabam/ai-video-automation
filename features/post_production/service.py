@@ -55,8 +55,8 @@ class PostProductionService:
                     video_path=final_path,
                     script=voiceover_script,
                     total_duration=actual_duration,
-                    font_size=int(os.getenv("SUBTITLE_FONT_SIZE", "28")),
-                    words_per_subtitle=int(os.getenv("SUBTITLE_WORDS_PER_LINE", "5")),
+                    font_size=int(os.getenv("SUBTITLE_FONT_SIZE", "14")),
+                    words_per_subtitle=int(os.getenv("SUBTITLE_WORDS_PER_LINE", "8")),
                 )
                 logger.info(f"Subtitles burned: {subtitle_path}")
                 final_path = subtitle_path

@@ -11,5 +11,6 @@ services:
     volumes:
       - ./data:/data
     restart: "no"
+    mem_limit: 512m
     # Uncomment to view logs continuously
     # command: ["uv", "run", "main.py"]
