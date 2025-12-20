@@ -1,0 +1,180 @@
+name: Deploy Backend to Digital Ocean
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'features/**'
+      - 'pyproject.toml'
+      - 'Dockerfile'
+      - 'main.py'
+      - 'main_v2.py'
+      - '.github/workflows/deploy-backend.yml'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/backend
+
+jobs:
+  build:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+
+      - name: Image build summary
+        run: |
+          echo "✅ Docker image built and pushed to GitHub Container Registry"
+          echo ""
+          echo "Image tags:"
+          echo "${{ steps.meta.outputs.tags }}" | tr ',' '\n' | sed 's/^/  - /'
+
+  deploy:
+    name: Deploy to Digital Ocean
+    runs-on: ubuntu-latest
+    needs: build
+
+    environment:
+      name: production
+      url: http://${{ secrets.DO_DROPLET_IP }}:8000
+
+    steps:
+      - name: Deploy to Digital Ocean Droplet
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DO_DROPLET_IP }}
+          username: ${{ secrets.DO_DROPLET_USER }}
+          key: ${{ secrets.DO_SSH_PRIVATE_KEY }}
+          port: ${{ secrets.DO_SSH_PORT || 22 }}
+          script: |
+            set -e
+
+            echo "Starting deployment..."
+
+            # Login to GitHub Container Registry
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
+
+            # Pull the latest image from GHCR
+            echo "Pulling image from GitHub Container Registry..."
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+
+            # Stop and remove old container
+            echo "Stopping old container..."
+            docker stop ai-video-backend 2>/dev/null || true
+            docker rm ai-video-backend 2>/dev/null || true
+
+            # Run new container
+            echo "Starting new container..."
+            docker run -d \
+              --name ai-video-backend \
+              --restart unless-stopped \
+              -p 8000:8000 \
+              -v /opt/ai-video-automation/data:/data \
+              -v /opt/ai-video-automation/.env:/app/.env:ro \
+              --env-file /opt/ai-video-automation/.env \
+              --memory="2g" \
+              --cpus="2" \
+              ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
+              uv run uvicorn features.platform.server:app --host 0.0.0.0 --port 8000
+
+            # Clean up old images (keep last 3)
+            echo "Cleaning up old images..."
+            docker images ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} --format "{{.ID}} {{.CreatedAt}}" | \
+              tail -n +4 | awk '{print $1}' | xargs -r docker rmi 2>/dev/null || true
+
+            # Wait for service to start
+            echo "Waiting for service to start..."
+            sleep 10
+
+            # Health check
+            if curl -f http://localhost:8000/health 2>/dev/null || curl -f http://localhost:8000/ 2>/dev/null; then
+              echo "✅ Backend deployed successfully and is responding"
+              docker ps -f name=ai-video-backend --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+            else
+              echo "❌ Backend deployed but health check failed"
+              echo "Checking logs..."
+              docker logs --tail 50 ai-video-backend
+              exit 1
+            fi
+
+      - name: Verify deployment
+        run: |
+          echo "Verifying backend is accessible..."
+          max_attempts=5
+          attempt=0
+
+          while [ $attempt -lt $max_attempts ]; do
+            if curl -f -m 10 http://${{ secrets.DO_DROPLET_IP }}:8000/health 2>/dev/null || \
+               curl -f -m 10 http://${{ secrets.DO_DROPLET_IP }}:8000/ 2>/dev/null; then
+              echo "✅ Backend is accessible from external network"
+              exit 0
+            fi
+
+            attempt=$((attempt + 1))
+            echo "Attempt $attempt/$max_attempts failed, retrying in 5s..."
+            sleep 5
+          done
+
+          echo "⚠️  Could not verify backend from external network"
+          echo "This may be normal if port 8000 is firewalled"
+          echo "Backend may still be working - check manually"
+          exit 0
+
+      - name: Deployment summary
+        if: success()
+        run: |
+          echo "=========================================="
+          echo "✅ Backend Deployment Complete"
+          echo "=========================================="
+          echo ""
+          echo "📦 Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          echo "🌐 Backend URL: http://${{ secrets.DO_DROPLET_IP }}:8000"
+          echo "🏥 Health Check: http://${{ secrets.DO_DROPLET_IP }}:8000/health"
+          echo "📚 API Docs: http://${{ secrets.DO_DROPLET_IP }}:8000/docs"
+          echo ""
+          echo "Useful commands on droplet:"
+          echo "  docker logs ai-video-backend"
+          echo "  docker restart ai-video-backend"
+          echo "  docker exec -it ai-video-backend bash"

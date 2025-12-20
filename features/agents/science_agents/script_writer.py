@@ -1,5 +1,5 @@
 from agents import Agent, ModelSettings
-from features.agents.models import ScriptOutput
+from .models import ScriptOutput
 
 def create_script_writer_agent(duration_seconds: int = 8) -> Agent:
     """Create the Script Writer agent for voiceover narration.

@@ -10,7 +10,28 @@ services:
       - VIDEO_OUTPUT_DIR=/data
     volumes:
       - ./data:/data
-    restart: "no"
+      - ./:/app
+      - /app/.venv
+    restart: "unless-stopped"
     mem_limit: 512m
-    # Uncomment to view logs continuously
-    # command: ["uv", "run", "main.py"]
+    command: ["uv", "run", "uvicorn", "features.platform.server:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    ports:
+      - "8000:8000"
+
+  web:
+    container_name: ai-video-automation-web
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+      target: deps # Use deps stage to get node_modules but skip build
+    volumes:
+      - ./web:/app
+      - /app/node_modules
+      - /app/.next
+    command: npm run dev
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_SUPABASE_URL=${SUPABASE_URL}
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=${SUPABASE_KEY}
+    restart: "unless-stopped"

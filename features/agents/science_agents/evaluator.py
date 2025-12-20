@@ -1,6 +1,6 @@
 from agents import Agent, ModelSettings
-from features.agents.tools import fact_check, web_search
-from features.agents.models import EvaluatorOutput
+from .tools import fact_check, web_search
+from .models import EvaluatorOutput
 
 def create_evaluator_agent() -> Agent:
     """Create the Fact Evaluator agent."""

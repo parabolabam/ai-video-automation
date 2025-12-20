@@ -1,6 +1,6 @@
 from agents import Agent, ModelSettings
-from features.agents.tools import web_search, science_news_search
-from features.agents.models import ResearcherOutput
+from .tools import web_search, science_news_search
+from .models import ResearcherOutput
 
 def create_researcher_agent() -> Agent:
     """Create the Science Researcher agent."""

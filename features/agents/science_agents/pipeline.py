@@ -13,16 +13,17 @@ from typing import Any
 
 from agents import Agent, Runner, function_tool
 
-from features.agents.researcher import create_researcher_agent
-from features.agents.evaluator import create_evaluator_agent
-from features.agents.analyst import create_audience_analyst_agent
-from features.agents.script_writer import create_script_writer_agent
-from features.agents.scene_planner import (
+from .researcher import create_researcher_agent
+from .evaluator import create_evaluator_agent
+from .analyst import create_audience_analyst_agent
+from .script_writer import create_script_writer_agent
+from .scene_planner import (
     create_scene_planner_agent, 
     submit_scene_plan, 
     get_scene_plan_result, 
     clear_scene_plan_result
 )
+from features.openai.conversation_state import load_previous_response_id, save_response_id
 
 logger = logging.getLogger(__name__)
 
@@ -52,11 +53,25 @@ async def run_science_research_pipeline() -> dict[str, str]:
     
     # Step 1: Research science facts
     logger.info("Agent 1 (Researcher): Finding science facts...")
+    
+    # Load previous response ID for conversation continuity
+    previous_response_id = load_previous_response_id()
+    if previous_response_id:
+        logger.info(f"Continuing conversation from response: {previous_response_id[:20]}...")
+    
     try:
         research_result = await runner.run(
             researcher,
-            "Find 5 mind-blowing science facts that would make great viral video content. Use web search to find real, verified facts."
+            "Find 5 mind-blowing science facts that would make great viral video content. Use web search to find real, verified facts.",
+            previous_response_id=previous_response_id
         )
+        
+        # Save new response ID for next run
+        if research_result.raw_responses:
+            last_response = research_result.raw_responses[-1]
+            if last_response.response_id:
+                save_response_id(last_response.response_id)
+        
         # Structured output: research_result.final_output is ResearcherOutput
         facts_list = research_result.final_output.facts
         if not facts_list:
@@ -182,11 +197,25 @@ async def run_extended_pipeline(num_scenes: int = 4) -> dict[str, Any]:
     
     # Steps 1-3: Same as regular pipeline (research, evaluate, select)
     logger.info("Agent 1 (Researcher): Finding science facts...")
+    
+    # Load previous response ID for conversation continuity
+    previous_response_id = load_previous_response_id()
+    if previous_response_id:
+        logger.info(f"Continuing conversation from response: {previous_response_id[:20]}...")
+
     try:
         research_result = await runner.run(
             researcher,
-            "Find 5 mind-blowing science facts that would make great viral video content. Use web search to find real, verified facts."
+            "Find 5 mind-blowing science facts that would make great viral video content. Use web search to find real, verified facts.",
+            previous_response_id=previous_response_id
         )
+        
+        # Save new response ID for next run
+        if research_result.raw_responses:
+            last_response = research_result.raw_responses[-1]
+            if last_response.response_id:
+                save_response_id(last_response.response_id)
+        
         # Structured output
         facts_list = research_result.final_output.facts
         if not facts_list:
