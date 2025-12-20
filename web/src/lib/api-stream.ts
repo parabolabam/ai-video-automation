@@ -9,12 +9,24 @@ interface RunOptions {
   user_id: string;
   input: string;
   onEvent: (event: StreamEvent) => void;
+  accessToken?: string;
 }
 
-export async function runWorkflowStream({ workflow_id, user_id, input, onEvent }: RunOptions) {
-  const response = await fetch('http://localhost:8000/api/run_stream', { // Connect to stream endpoint
+export async function runWorkflowStream({ workflow_id, user_id, input, onEvent, accessToken }: RunOptions) {
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+  };
+
+  // Add authorization header if access token is provided
+  if (accessToken) {
+    headers['Authorization'] = `Bearer ${accessToken}`;
+  }
+
+  const response = await fetch(`${apiUrl}/api/run_stream`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({ workflow_id, user_id, input })
   });
 

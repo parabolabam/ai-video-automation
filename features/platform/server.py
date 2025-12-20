@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
 import uvicorn
@@ -6,6 +6,7 @@ import logging
 import os
 
 from features.platform.runner import DynamicWorkflowRunner
+from features.platform.auth import get_current_user, get_optional_user, verify_user_access
 
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -15,10 +16,15 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="AI Video Automation Platform API")
 
-# Configure CORS
+# Configure CORS - Update to include production domain
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "https://vingine.duckdns.org",
+        "http://vingine.duckdns.org"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -51,11 +57,19 @@ async def run_workflow(request: WorkflowExecutionRequest):
     pass 
 
 @app.post("/api/run_stream")
-async def run_workflow_stream(request: WorkflowExecutionRequest):
+async def run_workflow_stream(
+    request: WorkflowExecutionRequest,
+    current_user: dict = Depends(get_optional_user)
+):
     """
     Stream workflow execution events (NDJSON).
+    Optionally authenticated - validates user_id if authenticated.
     """
     logger.info(f"Received STREAM execution request: workflow={request.workflow_id}")
+
+    # Verify user access if authenticated
+    if current_user:
+        verify_user_access(request.user_id, current_user)
 
     async def event_generator():
         try:
@@ -69,11 +83,29 @@ async def run_workflow_stream(request: WorkflowExecutionRequest):
     return StreamingResponse(event_generator(), media_type="application/x-ndjson")
 
 @app.post("/api/run")
-async def run_workflow(request: WorkflowExecutionRequest):
-     # Keep legacy for simple checks
+async def run_workflow(
+    request: WorkflowExecutionRequest,
+    current_user: dict = Depends(get_optional_user)
+):
+    """
+    Execute a workflow (legacy JSON response).
+    Optionally authenticated - validates user_id if authenticated.
+    """
+    # Verify user access if authenticated
+    if current_user:
+        verify_user_access(request.user_id, current_user)
+
     runner = DynamicWorkflowRunner(request.workflow_id, request.user_id)
     result = await runner.run(request.input)
     return {"status": "success", "data": result}
+
+@app.get("/api/auth/me")
+async def get_me(current_user: dict = Depends(get_current_user)):
+    """
+    Get current authenticated user information.
+    Requires authentication.
+    """
+    return current_user
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

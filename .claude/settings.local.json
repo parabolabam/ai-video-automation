@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cat:*)",
+      "Bash(mkdir:*)",
+      "Bash(git checkout:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nfeat: Add GitHub Actions CI/CD pipeline for backend deployment to Digital Ocean\n\nThis commit sets up a complete CI/CD pipeline using GitHub Actions and GitHub Container Registry (GHCR) for deploying the Python backend to a Digital Ocean droplet.\n\nFeatures:\n- Automated Docker image builds on GitHub Actions runners\n- Push images to GitHub Container Registry (ghcr.io)\n- SSH-based deployment to Digital Ocean droplet\n- Automatic deployment on push to main branch\n- Health checks and deployment verification\n- Docker layer caching for faster builds\n- Automatic cleanup of old images\n\nFiles added:\n- .github/workflows/deploy-backend.yml: Main deployment workflow\n- scripts/setup-backend-droplet.sh: One-time droplet setup script\n- scripts/deploy/setup-droplet.sh: Alternative setup with nginx config\n- scripts/deploy/rollback.sh: Rollback to previous version\n- scripts/deploy/check-health.sh: Health check script\n- DEPLOYMENT.md: Comprehensive deployment guide\n- DEPLOYMENT-QUICKSTART.md: Quick start guide with visual flow\n\nWorkflow:\n1. Developer pushes to main branch\n2. GitHub Actions builds Docker image\n3. Image pushed to GitHub Container Registry\n4. GitHub Actions SSHs to droplet\n5. Droplet pulls latest image from GHCR\n6. Old container stopped, new container started\n7. Health checks verify deployment\n\nRequired GitHub Secrets:\n- DO_DROPLET_IP: Droplet IP address\n- DO_DROPLET_USER: SSH username\n- DO_SSH_PRIVATE_KEY: SSH private key for authentication\n\nBenefits:\n- No building on droplet (saves resources)\n- Centralized image storage\n- Reusable images across environments\n- Fast deployments with layer caching\n- Complete deployment history in GHCR\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git push:*)",
+      "Bash(git commit:*)",
+      "Bash(scp:*)",
+      "Bash(ssh:*)",
+      "Bash(nslookup:*)",
+      "Bash(curl:*)",
+      "Bash(grep:*)"
+    ]
+  }
+}
