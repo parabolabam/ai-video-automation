@@ -41,9 +41,12 @@ async def get_current_user(
         HTTPException: If token is invalid or missing
     """
     if not supabase:
-        # If Supabase not configured, allow requests but log warning
-        logger.warning("Authentication bypassed - Supabase not configured")
-        return {"id": "anonymous", "email": "anonymous@example.com"}
+        # If Supabase not configured, reject all requests
+        logger.error("Authentication failed - Supabase not configured")
+        raise HTTPException(
+            status_code=500,
+            detail="Authentication service not configured. Please contact administrator.",
+        )
 
     if not credentials:
         raise HTTPException(
@@ -111,7 +114,7 @@ def verify_user_access(user_id: str, authenticated_user: dict) -> bool:
     Raises:
         HTTPException: If access is denied
     """
-    if authenticated_user["id"] == user_id or authenticated_user["id"] == "anonymous":
+    if authenticated_user["id"] == user_id:
         return True
 
     raise HTTPException(

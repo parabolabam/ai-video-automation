@@ -1,0 +1,173 @@
+name: Deploy Frontend to Digital Ocean
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'web/**'
+      - '.github/workflows/deploy-frontend.yml'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/frontend
+
+jobs:
+  build:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./web
+          file: ./web/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
+            NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+            NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+
+      - name: Image build summary
+        run: |
+          echo "✅ Docker image built and pushed to GitHub Container Registry"
+          echo ""
+          echo "Image tags:"
+          echo "${{ steps.meta.outputs.tags }}" | tr ',' '\n' | sed 's/^/  - /'
+
+  deploy:
+    name: Deploy to Digital Ocean
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Deploy to Digital Ocean Droplet
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DO_DROPLET_IP }}
+          username: ${{ secrets.DO_DROPLET_USER }}
+          key: ${{ secrets.DO_SSH_PRIVATE_KEY }}
+          port: ${{ secrets.DO_SSH_PORT || 22 }}
+          script: |
+            set -e
+
+            echo "Starting frontend deployment..."
+
+            # Login to GitHub Container Registry
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
+
+            # Pull the latest image from GHCR
+            echo "Pulling image from GitHub Container Registry..."
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+
+            # Stop and remove old container
+            echo "Stopping old container..."
+            docker stop ai-video-frontend 2>/dev/null || true
+            docker rm ai-video-frontend 2>/dev/null || true
+
+            # Run new container with environment variables from GitHub secrets
+            echo "Starting new container..."
+            docker run -d \
+              --name ai-video-frontend \
+              --restart unless-stopped \
+              -p 3000:3000 \
+              -e NEXT_PUBLIC_API_URL="${{ secrets.NEXT_PUBLIC_API_URL }}" \
+              -e NEXT_PUBLIC_SUPABASE_URL="${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}" \
+              -e NEXT_PUBLIC_SUPABASE_ANON_KEY="${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}" \
+              --memory="1g" \
+              --cpus="1" \
+              ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+
+            # Clean up old images (keep last 3)
+            echo "Cleaning up old images..."
+            docker images ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} --format "{{.ID}} {{.CreatedAt}}" | \
+              tail -n +4 | awk '{print $1}' | xargs -r docker rmi 2>/dev/null || true
+
+            # Wait for service to start
+            echo "Waiting for service to start..."
+            sleep 10
+
+            # Health check
+            if curl -f http://localhost:3000 2>/dev/null; then
+              echo "✅ Frontend deployed successfully and is responding"
+              docker ps -f name=ai-video-frontend --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+            else
+              echo "❌ Frontend deployed but health check failed"
+              echo "Checking logs..."
+              docker logs --tail 50 ai-video-frontend
+              exit 1
+            fi
+
+      - name: Verify deployment
+        run: |
+          echo "Verifying frontend is accessible..."
+          max_attempts=5
+          attempt=0
+
+          while [ $attempt -lt $max_attempts ]; do
+            if curl -f -m 10 http://${{ secrets.DO_DROPLET_IP }}:3000 2>/dev/null; then
+              echo "✅ Frontend is accessible from external network"
+              exit 0
+            fi
+
+            attempt=$((attempt + 1))
+            echo "Attempt $attempt/$max_attempts failed, retrying in 5s..."
+            sleep 5
+          done
+
+          echo "⚠️  Could not verify frontend from external network"
+          echo "This may be normal if port 3000 is firewalled"
+          echo "Frontend may still be working - check manually"
+          exit 0
+
+      - name: Deployment summary
+        if: success()
+        run: |
+          echo "=========================================="
+          echo "✅ Frontend Deployment Complete"
+          echo "=========================================="
+          echo ""
+          echo "📦 Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          echo "🌐 Frontend URL: http://${{ secrets.DO_DROPLET_IP }}:3000"
+          echo "🌐 Production URL: ${{ secrets.NEXT_PUBLIC_API_URL }}"
+          echo ""
+          echo "Useful commands on droplet:"
+          echo "  docker logs ai-video-frontend"
+          echo "  docker restart ai-video-frontend"
+          echo "  docker exec -it ai-video-frontend sh"

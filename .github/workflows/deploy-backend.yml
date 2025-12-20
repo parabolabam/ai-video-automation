@@ -101,15 +101,39 @@ jobs:
             docker stop ai-video-backend 2>/dev/null || true
             docker rm ai-video-backend 2>/dev/null || true
 
-            # Run new container
+            # Run new container with environment variables from GitHub secrets
             echo "Starting new container..."
             docker run -d \
               --name ai-video-backend \
               --restart unless-stopped \
               -p 8000:8000 \
               -v /opt/ai-video-automation/data:/data \
-              -v /opt/ai-video-automation/.env:/app/.env:ro \
-              --env-file /opt/ai-video-automation/.env \
+              -e KIE_API_KEY="${{ secrets.KIE_API_KEY }}" \
+              -e OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
+              -e SUPABASE_URL="${{ secrets.SUPABASE_URL }}" \
+              -e SUPABASE_KEY="${{ secrets.SUPABASE_KEY }}" \
+              -e SUPABASE_SERVICE_KEY="${{ secrets.SUPABASE_SERVICE_KEY }}" \
+              -e YOUTUBE_CLIENT_ID="${{ secrets.YOUTUBE_CLIENT_ID }}" \
+              -e YOUTUBE_CLIENT_SECRET="${{ secrets.YOUTUBE_CLIENT_SECRET }}" \
+              -e YOUTUBE_REFRESH_TOKEN="${{ secrets.YOUTUBE_REFRESH_TOKEN }}" \
+              -e TIKTOK_CLIENT_KEY="${{ secrets.TIKTOK_CLIENT_KEY }}" \
+              -e TIKTOK_CLIENT_SECRET="${{ secrets.TIKTOK_CLIENT_SECRET }}" \
+              -e IG_USER_ID="${{ secrets.IG_USER_ID }}" \
+              -e IG_ACCESS_TOKEN="${{ secrets.IG_ACCESS_TOKEN }}" \
+              -e VIDEO_DURATION="${{ secrets.VIDEO_DURATION || '8' }}" \
+              -e VIDEO_QUALITY="${{ secrets.VIDEO_QUALITY || 'high' }}" \
+              -e VEO_MAX_WAIT_TIME="${{ secrets.VEO_MAX_WAIT_TIME || '600' }}" \
+              -e LOG_LEVEL="${{ secrets.LOG_LEVEL || 'INFO' }}" \
+              -e KIE_MODEL="${{ secrets.KIE_MODEL || 'veo3_fast' }}" \
+              -e OPENAI_MODEL="${{ secrets.OPENAI_MODEL || 'gpt-4o' }}" \
+              -e ENABLE_VOICEOVER="${{ secrets.ENABLE_VOICEOVER || 'true' }}" \
+              -e TTS_VOICE="${{ secrets.TTS_VOICE || 'nova' }}" \
+              -e TTS_MODEL="${{ secrets.TTS_MODEL || 'tts-1-hd' }}" \
+              -e ENABLE_SUBTITLES="${{ secrets.ENABLE_SUBTITLES || 'true' }}" \
+              -e SUBTITLE_FONT_SIZE="${{ secrets.SUBTITLE_FONT_SIZE || '28' }}" \
+              -e SUBTITLE_WORDS_PER_LINE="${{ secrets.SUBTITLE_WORDS_PER_LINE || '5' }}" \
+              -e EXTENDED_MODE="${{ secrets.EXTENDED_MODE || 'true' }}" \
+              -e VIDEO_SCENES="${{ secrets.VIDEO_SCENES || '4' }}" \
               --memory="2g" \
               --cpus="2" \
               ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \

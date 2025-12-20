@@ -42,34 +42,19 @@ import json
 def health_check():
     return {"status": "ok"}
 
-@app.post("/api/run")
-async def run_workflow(request: WorkflowExecutionRequest):
-    """
-    Execute a workflow (legacy JSON response).
-    """
-    # ... legacy code or redirect ...
-    # For now keeping as is for backward compatibility if needed, 
-    # but strictly speaking the UI uses this.
-    # Let's switch it to streaming effectively if possible, or use a new endpoint.
-    # Given the user request for visualization, let's make /api/run a stream 
-    # but we need to change how frontend consumes it. 
-    # Or create /api/run_stream
-    pass 
-
 @app.post("/api/run_stream")
 async def run_workflow_stream(
     request: WorkflowExecutionRequest,
-    current_user: dict = Depends(get_optional_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """
     Stream workflow execution events (NDJSON).
-    Optionally authenticated - validates user_id if authenticated.
+    Requires authentication.
     """
-    logger.info(f"Received STREAM execution request: workflow={request.workflow_id}")
+    logger.info(f"Received STREAM execution request: workflow={request.workflow_id}, user={current_user['email']}")
 
-    # Verify user access if authenticated
-    if current_user:
-        verify_user_access(request.user_id, current_user)
+    # Verify user can only access their own workflows
+    verify_user_access(request.user_id, current_user)
 
     async def event_generator():
         try:
@@ -85,15 +70,16 @@ async def run_workflow_stream(
 @app.post("/api/run")
 async def run_workflow(
     request: WorkflowExecutionRequest,
-    current_user: dict = Depends(get_optional_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """
     Execute a workflow (legacy JSON response).
-    Optionally authenticated - validates user_id if authenticated.
+    Requires authentication.
     """
-    # Verify user access if authenticated
-    if current_user:
-        verify_user_access(request.user_id, current_user)
+    logger.info(f"Received execution request: workflow={request.workflow_id}, user={current_user['email']}")
+
+    # Verify user can only access their own workflows
+    verify_user_access(request.user_id, current_user)
 
     runner = DynamicWorkflowRunner(request.workflow_id, request.user_id)
     result = await runner.run(request.input)
