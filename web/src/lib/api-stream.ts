@@ -12,7 +12,8 @@ interface RunOptions {
 }
 
 export async function runWorkflowStream({ workflow_id, user_id, input, onEvent }: RunOptions) {
-  const response = await fetch('http://localhost:8000/api/run_stream', { // Connect to stream endpoint
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+  const response = await fetch(`${apiUrl}/api/run_stream`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ workflow_id, user_id, input })
