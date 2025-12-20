@@ -76,10 +76,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
 
-    environment:
-      name: production
-      url: http://${{ secrets.DO_DROPLET_IP }}:8000
-
     steps:
       - name: Deploy to Digital Ocean Droplet
         uses: appleboy/ssh-action@v1.2.0
