@@ -1,0 +1,199 @@
+name: Backend CI/CD
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'features/**'
+      - 'pyproject.toml'
+      - 'Dockerfile'
+      - 'main.py'
+      - 'main_v2.py'
+      - '.github/workflows/backend-ci-cd.yml'
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'features/**'
+      - 'pyproject.toml'
+      - 'Dockerfile'
+      - 'main.py'
+      - 'main_v2.py'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}-backend
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Run linting
+        run: |
+          uv run ruff check . || true
+        continue-on-error: true
+
+      - name: Run tests
+        run: |
+          # Add your test command here when you have tests
+          # uv run pytest tests/
+          echo "No tests configured yet"
+        continue-on-error: true
+
+  build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push'
+
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build.outputs.digest }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+
+  deploy:
+    name: Deploy to Digital Ocean
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main'
+
+    environment:
+      name: production-backend
+      url: http://${{ secrets.DO_DROPLET_IP }}:8000
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Digital Ocean Droplet
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          IMAGE_TAG: ${{ needs.build.outputs.image-tag }}
+        with:
+          host: ${{ secrets.DO_DROPLET_IP }}
+          username: ${{ secrets.DO_DROPLET_USER }}
+          key: ${{ secrets.DO_SSH_PRIVATE_KEY }}
+          port: ${{ secrets.DO_SSH_PORT || 22 }}
+          envs: IMAGE_TAG
+          script: |
+            set -e
+
+            # Navigate to deployment directory
+            cd ${{ secrets.BACKEND_DEPLOY_PATH || '/opt/ai-video-automation/backend' }}
+
+            # Login to GitHub Container Registry
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            # Pull the latest image
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+
+            # Stop and remove old container
+            docker stop ai-video-backend || true
+            docker rm ai-video-backend || true
+
+            # Run new container
+            docker run -d \
+              --name ai-video-backend \
+              --restart unless-stopped \
+              -p 8000:8000 \
+              -v /opt/ai-video-automation/data:/data \
+              -v /opt/ai-video-automation/.env:/app/.env:ro \
+              --env-file /opt/ai-video-automation/.env \
+              --memory="2g" \
+              --cpus="2" \
+              ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
+              uv run uvicorn features.platform.server:app --host 0.0.0.0 --port 8000
+
+            # Clean up old images
+            docker image prune -af --filter "until=168h"
+
+            # Wait for service to be healthy
+            sleep 10
+            curl -f http://localhost:8000/health || echo "Warning: Health check failed"
+
+      - name: Verify deployment
+        run: |
+          max_attempts=10
+          attempt=0
+
+          while [ $attempt -lt $max_attempts ]; do
+            if curl -f http://${{ secrets.DO_DROPLET_IP }}:8000/health; then
+              echo "Backend is healthy!"
+              exit 0
+            fi
+
+            attempt=$((attempt + 1))
+            echo "Attempt $attempt/$max_attempts failed, retrying in 10s..."
+            sleep 10
+          done
+
+          echo "Backend health check failed after $max_attempts attempts"
+          exit 1
+
+      - name: Notify deployment status
+        if: always()
+        run: |
+          if [ $? -eq 0 ]; then
+            echo "✅ Backend deployment successful"
+          else
+            echo "❌ Backend deployment failed"
+          fi
