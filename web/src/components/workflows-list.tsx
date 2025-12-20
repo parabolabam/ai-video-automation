@@ -29,7 +29,8 @@ export function WorkflowsList({ userId }: { userId?: string }) {
     setRunningId(id);
     setOpenDialogId(null); // Close dialog
     try {
-      const res = await fetch('http://localhost:8000/api/run', {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const res = await fetch(`${apiUrl}/api/run`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
