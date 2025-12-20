@@ -17,38 +17,44 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Loader2, Play, AlertCircle } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useTransition } from 'react';
+import { runWorkflow as runWorkflowAction } from '@/app/actions/workflow';
 
 export function WorkflowsList({ userId }: { userId?: string }) {
   const { data: workflows, isLoading, error } = trpc.workflow.list.useQuery(userId ? { userId } : undefined);
   const [runningId, setRunningId] = useState<string | null>(null);
   const [openDialogId, setOpenDialogId] = useState<string | null>(null);
   const [inputTopic, setInputTopic] = useState("");
+  const [isPending, startTransition] = useTransition();
 
-  const runWorkflow = async (id: string, wfUserId: string) => {
+  const handleRunWorkflow = async (id: string, wfUserId: string) => {
     setRunningId(id);
     setOpenDialogId(null); // Close dialog
-    try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-      const res = await fetch(`${apiUrl}/api/run`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          workflow_id: id,
-          user_id: wfUserId, // Use the user_id from the workflow object itself, which is always string
-          input: inputTopic || "No input provided"
-        })
-      });
-      const json = await res.json();
-      console.log('Run result:', json);
-      alert(`Workflow started for topic: "${inputTopic}"\nCheck logs!`);
-    } catch (err) {
-      console.error(err);
-      alert('Failed to start workflow');
-    } finally {
-      setRunningId(null);
-      setInputTopic(""); // Reset input
-    }
+
+    startTransition(async () => {
+      try {
+        // Use Server Action instead of direct fetch
+        const result = await runWorkflowAction({
+          workflowId: id,
+          userId: wfUserId,
+          input: inputTopic || "No input provided",
+        });
+
+        if (result.success) {
+          console.log('Run result:', result.data);
+          alert(`Workflow started for topic: "${inputTopic}"\nCheck logs!`);
+        } else {
+          console.error('Workflow error:', result.error);
+          alert(`Failed to start workflow: ${result.error}`);
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Failed to start workflow');
+      } finally {
+        setRunningId(null);
+        setInputTopic(""); // Reset input
+      }
+    });
   };
 
   if (isLoading) {
@@ -92,18 +98,57 @@ export function WorkflowsList({ userId }: { userId?: string }) {
             <CardDescription>{wf.description || 'No description provided'}</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex justify-end pt-4">
-               <Link href={`/user/${wf.user_id}/workflow/${wf.id}`}>
-                 <Button size="sm">
-                    <Play className="mr-2 h-4 w-4" />
-                    Open Visualizer
-                 </Button>
-               </Link>
-                <Link href={`/user/${wf.user_id}/workflow/${wf.id}/edit`}>
-                  <Button size="sm" variant="outline" className="ml-2">
-                    Edit Graph
+            <div className="flex justify-between items-center pt-4">
+              <Dialog open={openDialogId === wf.id} onOpenChange={(open) => setOpenDialogId(open ? wf.id : null)}>
+                <DialogTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="default"
+                    disabled={runningId !== null}
+                  >
+                    {runningId === wf.id ? (
+                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Running...</>
+                    ) : (
+                      <><Play className="mr-2 h-4 w-4" /> Run</>
+                    )}
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Run Workflow: {wf.name}</DialogTitle>
+                    <DialogDescription>
+                      Enter your input prompt for this workflow
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="py-4">
+                    <Label htmlFor="input">Input Topic</Label>
+                    <Input
+                      id="input"
+                      value={inputTopic}
+                      onChange={(e) => setInputTopic(e.target.value)}
+                      placeholder="e.g., AI advancements in 2024"
+                    />
+                  </div>
+                  <DialogFooter>
+                    <Button onClick={() => handleRunWorkflow(wf.id, wf.user_id)}>
+                      Start Workflow
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+
+              <div className="flex gap-2">
+                <Link href={`/user/${wf.user_id}/workflow/${wf.id}`}>
+                  <Button size="sm" variant="outline">
+                    Visualizer
                   </Button>
                 </Link>
+                <Link href={`/user/${wf.user_id}/workflow/${wf.id}/edit`}>
+                  <Button size="sm" variant="outline">
+                    Edit
+                  </Button>
+                </Link>
+              </div>
             </div>
           </CardContent>
         </Card>

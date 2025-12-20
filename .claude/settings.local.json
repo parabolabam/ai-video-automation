@@ -13,7 +13,9 @@
       "Bash(nslookup:*)",
       "Bash(curl:*)",
       "Bash(grep:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(gh pr create:*)",
+      "Bash(npm install:*)"
     ]
   }
 }

@@ -1,4 +1,4 @@
-export type StreamEvent = 
+export type StreamEvent =
   | { type: 'node_active'; node_id: string; agent_name: string }
   | { type: 'node_complete'; node_id: string; output: string }
   | { type: 'workflow_complete'; final_output: string }
@@ -9,22 +9,17 @@ interface RunOptions {
   user_id: string;
   input: string;
   onEvent: (event: StreamEvent) => void;
-  accessToken?: string;
+  streamUrl: string;
+  accessToken: string;
 }
 
-export async function runWorkflowStream({ workflow_id, user_id, input, onEvent, accessToken }: RunOptions) {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-
+export async function runWorkflowStream({ workflow_id, user_id, input, onEvent, streamUrl, accessToken }: RunOptions) {
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
+    'Authorization': `Bearer ${accessToken}`,
   };
 
-  // Add authorization header if access token is provided
-  if (accessToken) {
-    headers['Authorization'] = `Bearer ${accessToken}`;
-  }
-
-  const response = await fetch(`${apiUrl}/api/run_stream`, {
+  const response = await fetch(streamUrl, {
     method: 'POST',
     headers,
     body: JSON.stringify({ workflow_id, user_id, input })
@@ -42,7 +37,7 @@ export async function runWorkflowStream({ workflow_id, user_id, input, onEvent, 
 
     buffer += decoder.decode(value, { stream: true });
     const lines = buffer.split('\n');
-    
+
     // Process all complete lines
     buffer = lines.pop() || ''; // Keep incomplete line in buffer
 

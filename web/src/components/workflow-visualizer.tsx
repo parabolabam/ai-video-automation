@@ -13,6 +13,7 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 
 import { runWorkflowStream, StreamEvent } from '@/lib/api-stream'; // Helper we will create
+import { getStreamUrl } from '@/app/actions/workflow';
 import { trpc } from '@/lib/trpc';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
@@ -135,10 +136,25 @@ export function WorkflowVisualizer({ workflowId, userId }: WorkflowVisualizerPro
     setLogs(prev => [...prev, `Starting workflow for topic: "${inputTopic}"...`]);
 
     try {
+      // Get stream URL and access token from Server Action
+      const result = await getStreamUrl({
+        workflowId,
+        userId,
+        input: inputTopic,
+      });
+
+      if (!result.success || !result.streamUrl || !result.accessToken) {
+        setLogs(prev => [...prev, `ERROR: ${result.error || 'Failed to get stream credentials'}`]);
+        return;
+      }
+
+      // Now stream with the provided URL and token
       await runWorkflowStream({
         workflow_id: workflowId,
         user_id: userId,
         input: inputTopic,
+        streamUrl: result.streamUrl,
+        accessToken: result.accessToken,
         onEvent: (event: StreamEvent) => {
           if (event.type === 'node_active') {
             setActiveNodeId(event.node_id);
