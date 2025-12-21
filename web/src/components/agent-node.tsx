@@ -4,7 +4,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Bot } from 'lucide-react';
 
-export const AgentNode = memo(({ data }: NodeProps) => {
+interface AgentNodeData {
+  label: string;
+  role: string;
+  model: string;
+  tools?: string[];
+  systemInstructions?: string;
+}
+
+export const AgentNode = memo(({ data }: NodeProps<AgentNodeData>) => {
   return (
     <Card className="min-w-[250px] shadow-lg">
       <Handle type="target" position={Position.Top} className="w-3 h-3" />
