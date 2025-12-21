@@ -96,6 +96,14 @@ jobs:
         run: npx tsc --noEmit
         continue-on-error: false
 
+      - name: Build
+        run: npm run build
+        continue-on-error: false
+        env:
+          NEXT_PUBLIC_API_URL: https://vingine.duckdns.org
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+
   build-backend:
     name: Build Backend Image
     runs-on: ubuntu-latest
