@@ -1,33 +1,34 @@
 'use client';
 
-import { useAuth } from '@/lib/auth-context';
-import { LoginButton } from '@/components/auth/login-button';
-import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { LoginButton } from '@/components/auth/login-button';
+import { useAuth } from '@/lib/auth-context';
+import { Loader2 } from 'lucide-react';
 
 export default function Home() {
   const { user, loading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    // Redirect to user's dashboard if authenticated
-    if (user) {
+    if (!loading && user) {
       router.push(`/user/${user.id}`);
     }
-  }, [user, router]);
+  }, [user, loading, router]);
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-lg">Loading...</div>
+      <div className="flex justify-center items-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
     );
   }
 
   if (user) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-lg">Redirecting to your dashboard...</div>
+      <div className="flex justify-center items-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <p className="ml-2 text-muted-foreground">Redirecting to your dashboard...</p>
       </div>
     );
   }

@@ -3,6 +3,8 @@
 import { WorkflowsList } from '@/components/workflows-list';
 import { ProtectedRoute } from '@/components/auth/protected-route';
 import { LoginButton } from '@/components/auth/login-button';
+import { TokenDisplay } from '@/components/auth/token-display';
+import { CronJobsDashboard } from '@/components/cron-jobs-dashboard';
 import { useAuth } from '@/lib/auth-context';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
@@ -33,6 +35,10 @@ export default function UserDashboard() {
             </div>
             <LoginButton />
           </div>
+
+          <TokenDisplay />
+
+          <CronJobsDashboard />
 
           <WorkflowsList userId={userId} />
         </main>

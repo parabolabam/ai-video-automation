@@ -14,6 +14,7 @@ import 'reactflow/dist/style.css';
 
 import { runWorkflowStream, StreamEvent } from '@/lib/api-stream'; // Helper we will create
 import { trpc } from '@/lib/trpc';
+import { useAuth } from '@/lib/auth-context';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
 import { ScrollArea } from './ui/scroll-area';
@@ -28,10 +29,12 @@ interface WorkflowVisualizerProps {
 }
 
 export function WorkflowVisualizer({ workflowId, userId }: WorkflowVisualizerProps) {
+  const { session } = useAuth();
+
   // Graph State
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-  
+
   // Execution State
   const [isRunning, setIsRunning] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
@@ -126,7 +129,11 @@ export function WorkflowVisualizer({ workflowId, userId }: WorkflowVisualizerPro
 
 
   const handleRun = async () => {
-    if (!inputTopic) return;
+    if (!inputTopic || !session?.access_token) {
+      setLogs(prev => [...prev, `ERROR: Not authenticated. Please sign in.`]);
+      return;
+    }
+
     setIsRunning(true);
     setLogs([]);
     setCompletedNodes(new Set());
@@ -135,10 +142,16 @@ export function WorkflowVisualizer({ workflowId, userId }: WorkflowVisualizerPro
     setLogs(prev => [...prev, `Starting workflow for topic: "${inputTopic}"...`]);
 
     try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const streamUrl = `${apiUrl}/api/run/stream`;
+
+      // Stream with client-side access token
       await runWorkflowStream({
         workflow_id: workflowId,
         user_id: userId,
         input: inputTopic,
+        streamUrl,
+        accessToken: session.access_token,
         onEvent: (event: StreamEvent) => {
           if (event.type === 'node_active') {
             setActiveNodeId(event.node_id);

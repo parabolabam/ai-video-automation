@@ -1,6 +1,6 @@
 services:
-  app:
-    container_name: ai-video-automation
+  backend:
+    container_name: ai-video-backend
     build:
       context: .
       dockerfile: Dockerfile
@@ -8,22 +8,36 @@ services:
       - .env
     environment:
       - VIDEO_OUTPUT_DIR=/data
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=INFO
     volumes:
       - ./data:/data
       - ./:/app
       - /app/.venv
     restart: "unless-stopped"
     mem_limit: 512m
-    command: ["uv", "run", "uvicorn", "features.platform.server:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    command: ["sh", "-c", "python validate_env.py && uv run uvicorn features.platform.server:app --host 0.0.0.0 --port 8000 --reload"]
     ports:
       - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
-  web:
-    container_name: ai-video-automation-web
+  frontend:
+    container_name: ai-video-frontend
     build:
       context: ./web
       dockerfile: Dockerfile
       target: deps # Use deps stage to get node_modules but skip build
+    env_file:
+      - .env
+    environment:
+      - API_URL=http://backend:8000
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_SUPABASE_URL=${SUPABASE_URL}
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=${SUPABASE_KEY}
     volumes:
       - ./web:/app
       - /app/node_modules
@@ -31,7 +45,6 @@ services:
     command: npm run dev
     ports:
       - "3000:3000"
-    environment:
-      - NEXT_PUBLIC_SUPABASE_URL=${SUPABASE_URL}
-      - NEXT_PUBLIC_SUPABASE_ANON_KEY=${SUPABASE_KEY}
+    depends_on:
+      - backend
     restart: "unless-stopped"

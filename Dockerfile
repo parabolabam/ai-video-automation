@@ -19,5 +19,13 @@ ENV PYTHONUNBUFFERED=1 \
 # Health check (optional)
 HEALTHCHECK CMD python -c "import sys; sys.exit(0)"
 
-# Default command runs orchestrator
-CMD ["uv", "run", "main_v2.py"]
+# Copy validation script
+COPY validate_env.py .
+
+# Make validation script executable
+RUN chmod +x validate_env.py
+
+# Validate environment and start application
+# This ensures container fails immediately if required env vars are missing
+# Note: docker-compose.yml overrides this with uvicorn server for local dev
+CMD ["sh", "-c", "python validate_env.py && uv run uvicorn features.platform.server:app --host 0.0.0.0 --port 8000"]
