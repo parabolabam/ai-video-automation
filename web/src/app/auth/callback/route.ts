@@ -6,6 +6,9 @@ export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url)
   const code = requestUrl.searchParams.get('code')
 
+  // Use NEXT_PUBLIC_SITE_URL for redirects to avoid reverse proxy issues
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || requestUrl.origin
+
   if (code) {
     const cookieStore = await cookies()
 
@@ -35,11 +38,11 @@ export async function GET(request: NextRequest) {
     if (!error && data?.session?.user) {
       // Redirect to user dashboard
       return NextResponse.redirect(
-        new URL(`/user/${data.session.user.id}`, requestUrl.origin)
+        new URL(`/user/${data.session.user.id}`, siteUrl)
       )
     }
   }
 
   // Fallback: redirect to home page
-  return NextResponse.redirect(requestUrl.origin)
+  return NextResponse.redirect(siteUrl)
 }
