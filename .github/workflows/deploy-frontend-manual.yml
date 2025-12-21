@@ -102,7 +102,7 @@ jobs:
           host: ${{ secrets.DO_DROPLET_IP }}
           username: ${{ secrets.DO_DROPLET_USER }}
           key: ${{ secrets.DO_SSH_PRIVATE_KEY }}
-          port: ${{ secrets.DO_SSH_PORT || 22 }}
+          port: 22
           script: |
             set -e
 
