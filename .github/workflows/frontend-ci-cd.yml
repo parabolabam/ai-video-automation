@@ -119,7 +119,7 @@ jobs:
 
     environment:
       name: production-frontend
-      url: http://${{ secrets.DO_DROPLET_IP }}:3000
+      url: https://vingine.duckdns.org
 
     steps:
       - name: Checkout code
