@@ -42,7 +42,14 @@
       "Bash([ -s \"$NVM_DIR/nvm.sh\" ])",
       "Bash(. \"$NVM_DIR/nvm.sh\")",
       "Bash(nvm use default)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(source \"$NVM_DIR/nvm.sh\")",
+      "Bash(source ~/.nvm/nvm.sh)",
+      "Bash(nvm use:*)",
+      "Bash(npm:*)",
+      "Bash(source ~/.zshrc)",
+      "Bash(npx eslint:*)",
+      "Bash(npx -y tsc --noEmit)"
     ]
   }
 }

@@ -1,0 +1,226 @@
+name: PR Checks
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  detect-changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      nginx: ${{ steps.filter.outputs.nginx }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Detect file changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'features/**'
+              - 'pyproject.toml'
+              - 'Dockerfile'
+              - 'main.py'
+              - 'main_v2.py'
+              - '**.py'
+            frontend:
+              - 'web/**'
+            nginx:
+              - 'nginx/**'
+
+  lint-backend:
+    name: Lint Backend
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.backend == 'true'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install dependencies
+        run: uv pip install --system -e .
+
+      - name: Run ruff (lint)
+        run: uv run ruff check .
+        continue-on-error: false
+
+      - name: Run ruff (format check)
+        run: uv run ruff format --check .
+        continue-on-error: false
+
+  lint-frontend:
+    name: Lint Frontend
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.frontend == 'true'
+
+    defaults:
+      run:
+        working-directory: ./web
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint
+        continue-on-error: false
+
+      - name: Type check
+        run: npx tsc --noEmit
+        continue-on-error: false
+
+  build-backend:
+    name: Build Backend Image
+    runs-on: ubuntu-latest
+    needs: [detect-changes, lint-backend]
+    if: needs.detect-changes.outputs.backend == 'true'
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Backend Docker image (test only)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+
+  build-frontend:
+    name: Build Frontend Image
+    runs-on: ubuntu-latest
+    needs: [detect-changes, lint-frontend]
+    if: needs.detect-changes.outputs.frontend == 'true'
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Frontend Docker image (test only)
+        uses: docker/build-push-action@v5
+        with:
+          context: ./web
+          file: ./web/Dockerfile
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+          build-args: |
+            NEXT_PUBLIC_API_URL=https://vingine.duckdns.org
+            NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+            NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+
+  build-nginx:
+    name: Build Nginx Image
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.nginx == 'true'
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Nginx Docker image (test only)
+        uses: docker/build-push-action@v5
+        with:
+          context: ./nginx
+          file: ./nginx/Dockerfile
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+
+  all-checks-passed:
+    name: All Checks Passed
+    runs-on: ubuntu-latest
+    needs: [detect-changes, lint-backend, lint-frontend, build-backend, build-frontend, build-nginx]
+    if: always()
+
+    steps:
+      - name: Check if all jobs passed
+        run: |
+          echo "Checking results..."
+          echo "Backend changed: ${{ needs.detect-changes.outputs.backend }}"
+          echo "Frontend changed: ${{ needs.detect-changes.outputs.frontend }}"
+          echo "Nginx changed: ${{ needs.detect-changes.outputs.nginx }}"
+
+          # Check backend jobs if backend changed
+          if [[ "${{ needs.detect-changes.outputs.backend }}" == "true" ]]; then
+            if [[ "${{ needs.lint-backend.result }}" != "success" ]] || \
+               [[ "${{ needs.build-backend.result }}" != "success" ]]; then
+              echo "❌ Backend checks failed"
+              echo "Backend lint: ${{ needs.lint-backend.result }}"
+              echo "Backend build: ${{ needs.build-backend.result }}"
+              exit 1
+            fi
+          fi
+
+          # Check frontend jobs if frontend changed
+          if [[ "${{ needs.detect-changes.outputs.frontend }}" == "true" ]]; then
+            if [[ "${{ needs.lint-frontend.result }}" != "success" ]] || \
+               [[ "${{ needs.build-frontend.result }}" != "success" ]]; then
+              echo "❌ Frontend checks failed"
+              echo "Frontend lint: ${{ needs.lint-frontend.result }}"
+              echo "Frontend build: ${{ needs.build-frontend.result }}"
+              exit 1
+            fi
+          fi
+
+          # Check nginx jobs if nginx changed
+          if [[ "${{ needs.detect-changes.outputs.nginx }}" == "true" ]]; then
+            if [[ "${{ needs.build-nginx.result }}" != "success" ]]; then
+              echo "❌ Nginx checks failed"
+              echo "Nginx build: ${{ needs.build-nginx.result }}"
+              exit 1
+            fi
+          fi
+
+          echo "✅ All checks passed!"
