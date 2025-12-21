@@ -49,7 +49,11 @@
       "Bash(npm:*)",
       "Bash(source ~/.zshrc)",
       "Bash(npx eslint:*)",
-      "Bash(npx -y tsc --noEmit)"
+      "Bash(npx -y tsc --noEmit)",
+      "Bash(/Users/parabolabam/.nvm/versions/node/v24.11.1/bin/npm run build)",
+      "Bash(/Users/parabolabam/.nvm/versions/node/v24.11.1/bin/node /Users/parabolabam/.nvm/versions/node/v24.11.1/bin/npm run build:*)",
+      "Bash(export PATH=\"/Users/parabolabam/.nvm/versions/node/v24.11.1/bin:$PATH\":*)",
+      "Bash(PATH=\"/Users/parabolabam/.nvm/versions/node/v24.11.1/bin:$PATH\" /Users/parabolabam/.nvm/versions/node/v24.11.1/bin/npm run build:*)"
     ]
   }
 }

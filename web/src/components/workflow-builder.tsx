@@ -145,10 +145,22 @@ export function WorkflowBuilder({ workflowId, userId }: WorkflowBuilderProps) {
     setEditingNodeId(null);
   };
 
-  const getCurrentAgentConfig = () => {
+  const getCurrentAgentConfig = (): {
+    label: string;
+    role: string;
+    model: string;
+    systemInstructions: string;
+    tools: string[];
+  } | undefined => {
     if (!editingNodeId) return undefined;
     const node = nodes.find((n) => n.id === editingNodeId);
-    return node?.data;
+    return node?.data as {
+      label: string;
+      role: string;
+      model: string;
+      systemInstructions: string;
+      tools: string[];
+    } | undefined;
   };
 
   const saveWorkflow = async () => {
