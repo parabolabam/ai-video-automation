@@ -188,6 +188,18 @@ jobs:
             set -e
             cd /opt/ai-video-automation
 
+            # Update .env file with secrets
+            cat > .env <<EOF
+            KIE_API_KEY=${{ secrets.KIE_API_KEY }}
+            OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+            SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+            SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}
+            SUPABASE_SERVICE_KEY=${{ secrets.SUPABASE_SERVICE_KEY }}
+            YOUTUBE_CLIENT_ID=${{ secrets.YOUTUBE_CLIENT_ID }}
+            YOUTUBE_CLIENT_SECRET=${{ secrets.YOUTUBE_CLIENT_SECRET }}
+            YOUTUBE_REFRESH_TOKEN=${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+            EOF
+
             # Login to GHCR
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
