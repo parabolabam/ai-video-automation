@@ -13,7 +13,7 @@ interface AgentNodeData {
 }
 
 export const AgentNode = memo(({ data }: NodeProps) => {
-  const nodeData = data as AgentNodeData;
+  const nodeData = data as unknown as AgentNodeData;
   return (
     <Card className="min-w-[250px] shadow-lg">
       <Handle type="target" position={Position.Top} className="w-3 h-3" />
