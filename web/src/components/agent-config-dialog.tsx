@@ -41,7 +41,7 @@ const AVAILABLE_TOOLS = [
 ];
 
 export function AgentConfigDialog({ open, onClose, onSave, initialConfig }: AgentConfigDialogProps) {
-  const [config, setConfig] = useState<AgentConfig>(
+  const [config, setConfig] = useState<AgentConfig>(() =>
     initialConfig || {
       label: '',
       role: 'Researcher',
@@ -53,10 +53,12 @@ export function AgentConfigDialog({ open, onClose, onSave, initialConfig }: Agen
 
   const [newTool, setNewTool] = useState('');
 
+  // Update config when initialConfig changes (e.g., editing different nodes)
   useEffect(() => {
-    if (initialConfig) {
+    if (initialConfig && JSON.stringify(initialConfig) !== JSON.stringify(config)) {
       setConfig(initialConfig);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialConfig]);
 
   const handleSave = () => {
@@ -84,7 +86,7 @@ export function AgentConfigDialog({ open, onClose, onSave, initialConfig }: Agen
         <DialogHeader>
           <DialogTitle>Configure Agent</DialogTitle>
           <DialogDescription>
-            Set up the agent's name, role, model, and capabilities.
+            Set up the agent&apos;s name, role, model, and capabilities.
           </DialogDescription>
         </DialogHeader>
 

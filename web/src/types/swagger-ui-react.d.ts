@@ -2,14 +2,14 @@ declare module 'swagger-ui-react' {
   import { Component } from 'react';
 
   interface SwaggerUIProps {
-    spec?: any;
+    spec?: unknown;
     url?: string;
-    onComplete?: (system: any) => void;
-    requestInterceptor?: (req: any) => any;
-    responseInterceptor?: (res: any) => any;
+    onComplete?: (system: unknown) => void;
+    requestInterceptor?: (req: unknown) => unknown;
+    responseInterceptor?: (res: unknown) => unknown;
     docExpansion?: 'list' | 'full' | 'none';
     defaultModelsExpandDepth?: number;
-    [key: string]: any;
+    [key: string]: unknown;
   }
 
   export default class SwaggerUI extends Component<SwaggerUIProps> {}

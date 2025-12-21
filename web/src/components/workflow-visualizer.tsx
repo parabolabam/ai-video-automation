@@ -97,7 +97,7 @@ export function WorkflowVisualizer({ workflowId, userId }: WorkflowVisualizerPro
         const isActive = node.id === activeNodeId;
         const isCompleted = completedNodes.has(node.id);
         
-        let style = { ...node.style };
+        const style = { ...node.style };
         if (isActive) {
           style.border = '2px solid #22c55e'; // Green
           style.boxShadow = '0 0 10px #22c55e';
