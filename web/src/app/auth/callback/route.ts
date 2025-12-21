@@ -18,13 +18,13 @@ export async function GET(request: NextRequest) {
             return cookieStore.getAll()
           },
           setAll(cookiesToSet) {
-            try {
-              cookiesToSet.forEach(({ name, value, options }) =>
-                cookieStore.set(name, value, options)
-              )
-            } catch {
-              // Ignore errors during build time
-            }
+            cookiesToSet.forEach(({ name, value, options }) => {
+              cookieStore.set({
+                name,
+                value,
+                ...options,
+              })
+            })
           },
         },
       }

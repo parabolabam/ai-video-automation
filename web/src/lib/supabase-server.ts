@@ -16,7 +16,11 @@ export async function createClient() {
           try {
             cookiesToSet.forEach(({ name, value, options }) => {
               // Use Supabase's cookie options as-is, don't override
-              cookieStore.set(name, value, options)
+              cookieStore.set({
+                name,
+                value,
+                ...options,
+              })
             })
           } catch (error) {
             // The `setAll` method was called from a Server Component.
