@@ -12,7 +12,7 @@ import { useEffect } from 'react';
 export default function UserDashboard() {
   const params = useParams();
   const router = useRouter();
-  const { user, loading } = useAuth();
+  const { user } = useAuth();
   const userId = params.userId as string;
 
   useEffect(() => {

@@ -13,7 +13,7 @@ interface RunWorkflowParams {
 
 interface WorkflowResult {
   success: boolean
-  data?: any
+  data?: unknown
   error?: string
 }
 
@@ -159,7 +159,7 @@ export async function getCurrentUser() {
 interface CreateWorkflowParams {
   name: string
   description?: string
-  definition?: any
+  definition?: unknown
 }
 
 /**

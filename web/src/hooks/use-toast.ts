@@ -7,8 +7,14 @@
 // Actually, I commented out the import usage, but let's provide a dummy one just in case 
 // I change my mind or imported it.
 
+interface ToastProps {
+    title?: string;
+    description?: string;
+    variant?: 'default' | 'destructive';
+}
+
 export const useToast = () => {
     return {
-        toast: (props: any) => console.log(props)
+        toast: (props: ToastProps) => console.log(props)
     }
 }
