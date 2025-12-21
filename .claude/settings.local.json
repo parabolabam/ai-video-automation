@@ -35,7 +35,8 @@
       "Bash(DOCKER_HOST=unix:///Users/parabolabam/.colima/default/docker.sock docker-compose ps:*)",
       "Bash(DOCKER_HOST=unix:///Users/parabolabam/.colima/default/docker.sock docker-compose logs:*)",
       "Bash(DOCKER_HOST=unix:///Users/parabolabam/.colima/default/docker.sock docker-compose restart:*)",
-      "Bash(DOCKER_HOST=unix:///Users/parabolabam/.colima/default/docker.sock docker-compose exec:*)"
+      "Bash(DOCKER_HOST=unix:///Users/parabolabam/.colima/default/docker.sock docker-compose exec:*)",
+      "Bash(npx tsc --noEmit)"
     ]
   }
 }
