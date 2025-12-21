@@ -60,8 +60,12 @@ USER nextjs
 
 EXPOSE 3000
 
-ENV PORT 3000
-# set hostname to localhost
-ENV HOSTNAME "0.0.0.0"
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
 
-CMD ["node", "server.js"]
+# Copy validation script
+COPY --chown=nextjs:nodejs validate_env.js .
+
+# Validate environment and start server
+# This ensures container fails immediately if required env vars are missing
+CMD ["sh", "-c", "node validate_env.js && node server.js"]

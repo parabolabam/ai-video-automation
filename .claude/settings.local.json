@@ -15,7 +15,27 @@
       "Bash(grep:*)",
       "Bash(find:*)",
       "Bash(gh pr create:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(if [ -f .env ])",
+      "Bash(then echo \"Backend .env exists\")",
+      "Bash(else echo \"Backend .env missing\")",
+      "Bash(fi)",
+      "Bash(if [ -f web/.env.local ])",
+      "Bash(then echo \"Frontend .env.local exists\")",
+      "Bash(else echo \"Frontend .env.local missing\")",
+      "Bash(chmod:*)",
+      "Bash(./verify-local-setup.sh)",
+      "Bash(./docker-local.sh:*)",
+      "Bash(lsof:*)",
+      "Bash(xargs kill:*)",
+      "Bash(colima status:*)",
+      "Bash(DOCKER_HOST=unix:///Users/parabolabam/.colima/default/docker.sock docker-compose up:*)",
+      "Bash(./setup-local-env.sh:*)",
+      "Bash(bash -c 'echo \"\"y\"\" | ./setup-local-env.sh')",
+      "Bash(DOCKER_HOST=unix:///Users/parabolabam/.colima/default/docker.sock docker-compose ps:*)",
+      "Bash(DOCKER_HOST=unix:///Users/parabolabam/.colima/default/docker.sock docker-compose logs:*)",
+      "Bash(DOCKER_HOST=unix:///Users/parabolabam/.colima/default/docker.sock docker-compose restart:*)",
+      "Bash(DOCKER_HOST=unix:///Users/parabolabam/.colima/default/docker.sock docker-compose exec:*)"
     ]
   }
 }

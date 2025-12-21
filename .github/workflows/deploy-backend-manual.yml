@@ -1,0 +1,164 @@
+name: Manual Deploy Backend
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to deploy'
+        required: true
+        default: 'main'
+        type: choice
+        options:
+          - main
+          - deployment/github-actions-setup
+          - staging
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+      skip_build:
+        description: 'Skip build and use latest image'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/backend
+
+jobs:
+  deploy:
+    name: Manual Backend Deployment
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Log deployment info
+        run: |
+          echo "=========================================="
+          echo "🚀 Manual Backend Deployment"
+          echo "=========================================="
+          echo "Branch: ${{ github.event.inputs.branch }}"
+          echo "Environment: ${{ github.event.inputs.environment }}"
+          echo "Skip build: ${{ github.event.inputs.skip_build }}"
+          echo "Triggered by: ${{ github.actor }}"
+          echo "=========================================="
+
+      - name: Checkout code
+        if: github.event.inputs.skip_build != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
+
+      - name: Set up Docker Buildx
+        if: github.event.inputs.skip_build != 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        if: github.event.inputs.skip_build != 'true'
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        if: github.event.inputs.skip_build != 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+
+      - name: Deploy to Digital Ocean
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DO_DROPLET_IP }}
+          username: ${{ secrets.DO_DROPLET_USER }}
+          key: ${{ secrets.DO_SSH_PRIVATE_KEY }}
+          port: ${{ secrets.DO_SSH_PORT || 22 }}
+          script: |
+            set -e
+
+            echo "Starting backend deployment..."
+            echo "Environment: ${{ github.event.inputs.environment }}"
+
+            # Login to GHCR
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
+
+            # Pull latest image
+            echo "Pulling latest image..."
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+
+            # Stop old container
+            echo "Stopping old container..."
+            docker stop ai-video-backend 2>/dev/null || true
+            docker rm ai-video-backend 2>/dev/null || true
+
+            # Run new container with environment variables
+            echo "Starting new container..."
+            docker run -d \
+              --name ai-video-backend \
+              --restart unless-stopped \
+              -p 8000:8000 \
+              -v /opt/ai-video-automation/data:/data \
+              -e KIE_API_KEY="${{ secrets.KIE_API_KEY }}" \
+              -e OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
+              -e SUPABASE_URL="${{ secrets.SUPABASE_URL }}" \
+              -e SUPABASE_KEY="${{ secrets.SUPABASE_KEY }}" \
+              -e SUPABASE_SERVICE_KEY="${{ secrets.SUPABASE_SERVICE_KEY }}" \
+              -e YOUTUBE_CLIENT_ID="${{ secrets.YOUTUBE_CLIENT_ID }}" \
+              -e YOUTUBE_CLIENT_SECRET="${{ secrets.YOUTUBE_CLIENT_SECRET }}" \
+              -e YOUTUBE_REFRESH_TOKEN="${{ secrets.YOUTUBE_REFRESH_TOKEN }}" \
+              --memory="2g" \
+              --cpus="2" \
+              ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
+              uv run uvicorn features.platform.server:app --host 0.0.0.0 --port 8000
+
+            # Wait for service
+            echo "Waiting for service to start..."
+            sleep 10
+
+            # Health check
+            if curl -f http://localhost:8000/health 2>/dev/null; then
+              echo "✅ Backend deployed successfully!"
+              docker ps -f name=ai-video-backend --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+            else
+              echo "❌ Health check failed"
+              docker logs --tail 50 ai-video-backend
+              exit 1
+            fi
+
+      - name: Deployment summary
+        if: success()
+        run: |
+          echo "=========================================="
+          echo "✅ Manual Deployment Complete"
+          echo "=========================================="
+          echo "Branch: ${{ github.event.inputs.branch }}"
+          echo "Environment: ${{ github.event.inputs.environment }}"
+          echo "Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          echo "Backend URL: https://vingine.duckdns.org"
+          echo "=========================================="

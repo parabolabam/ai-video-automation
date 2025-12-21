@@ -155,3 +155,116 @@ export async function getCurrentUser() {
     return null
   }
 }
+
+interface CreateWorkflowParams {
+  name: string
+  description?: string
+  definition?: any
+}
+
+/**
+ * Server Action to create a new workflow
+ */
+export async function createWorkflow(params: CreateWorkflowParams): Promise<WorkflowResult> {
+  try {
+    const supabase = await createClient()
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+
+    if (sessionError) {
+      console.error('Session error:', sessionError)
+      return {
+        success: false,
+        error: `Session error: ${sessionError.message}`,
+      }
+    }
+
+    if (!session) {
+      console.error('No session found')
+      return {
+        success: false,
+        error: 'Not authenticated. Please sign in.',
+      }
+    }
+
+    const response = await fetch(`${API_URL}/api/workflows`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify(params),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      return {
+        success: false,
+        error: errorData.detail || `HTTP error ${response.status}`,
+      }
+    }
+
+    const data = await response.json()
+
+    // Revalidate the workflows list
+    revalidatePath(`/user/${session.user.id}`)
+
+    return {
+      success: true,
+      data,
+    }
+  } catch (error) {
+    console.error('Create workflow error:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to create workflow',
+    }
+  }
+}
+
+/**
+ * Server Action to delete a workflow
+ */
+export async function deleteWorkflow(workflowId: string): Promise<WorkflowResult> {
+  try {
+    const supabase = await createClient()
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+
+    if (sessionError || !session) {
+      return {
+        success: false,
+        error: 'Not authenticated. Please sign in.',
+      }
+    }
+
+    const response = await fetch(`${API_URL}/api/workflows/${workflowId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      return {
+        success: false,
+        error: errorData.detail || `HTTP error ${response.status}`,
+      }
+    }
+
+    const data = await response.json()
+
+    // Revalidate the workflows list
+    revalidatePath(`/user/${session.user.id}`)
+
+    return {
+      success: true,
+      data,
+    }
+  } catch (error) {
+    console.error('Delete workflow error:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to delete workflow',
+    }
+  }
+}
