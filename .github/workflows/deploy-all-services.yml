@@ -194,8 +194,12 @@ jobs:
             # Pull latest backend image
             docker pull ghcr.io/${{ github.repository }}/backend:latest
 
+            # Stop and remove old container
+            docker stop ai-video-backend 2>/dev/null || true
+            docker rm ai-video-backend 2>/dev/null || true
+
             # Deploy backend using docker-compose
-            docker-compose -f docker-compose.prod.yml up -d --no-deps --force-recreate backend
+            docker-compose -f docker-compose.prod.yml up -d backend
 
             # Health check
             sleep 5
@@ -228,8 +232,12 @@ jobs:
             # Pull latest frontend image
             docker pull ghcr.io/${{ github.repository }}/frontend:latest
 
+            # Stop and remove old container
+            docker stop ai-video-frontend 2>/dev/null || true
+            docker rm ai-video-frontend 2>/dev/null || true
+
             # Deploy frontend using docker-compose
-            docker-compose -f docker-compose.prod.yml up -d --no-deps --force-recreate frontend
+            docker-compose -f docker-compose.prod.yml up -d frontend
 
             # Health check
             sleep 5
@@ -262,8 +270,12 @@ jobs:
             # Pull latest nginx image
             docker pull ghcr.io/${{ github.repository }}/nginx:latest
 
+            # Stop and remove old container
+            docker stop ai-video-nginx 2>/dev/null || true
+            docker rm ai-video-nginx 2>/dev/null || true
+
             # Deploy nginx using docker-compose
-            docker-compose -f docker-compose.prod.yml up -d --no-deps --force-recreate nginx
+            docker-compose -f docker-compose.prod.yml up -d nginx
 
             # Health check
             sleep 5
