@@ -56,7 +56,20 @@
       "Bash(PATH=\"/Users/parabolabam/.nvm/versions/node/v24.11.1/bin:$PATH\" /Users/parabolabam/.nvm/versions/node/v24.11.1/bin/npm run build:*)",
       "Bash(PATH=\"/Users/parabolabam/.nvm/versions/node/v24.11.1/bin:$PATH\" /Users/parabolabam/.nvm/versions/node/v24.11.1/bin/npm run lint:*)",
       "Bash(PATH=\"/Users/parabolabam/.nvm/versions/node/v24.11.1/bin:$PATH\" /Users/parabolabam/.nvm/versions/node/v24.11.1/bin/npx eslint:*)",
-      "Bash(npx next lint)"
+      "Bash(npx next lint)",
+      "Bash(ping:*)",
+      "Bash(gh secret:*)",
+      "Bash(docker build:*)",
+      "Bash(docker push:*)",
+      "Bash(echo $GITHUB_TOKEN)",
+      "Bash(docker login:*)",
+      "Bash(git fetch:*)",
+      "Bash(git merge:*)",
+      "Bash(.)",
+      "Bash(export DOCKER_HOST=unix:///Users/parabolabam/.colima/default/docker.sock)",
+      "Bash(gh auth token)",
+      "Bash(docker save:*)",
+      "Bash(docker buildx:*)"
     ]
   }
 }
