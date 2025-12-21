@@ -32,8 +32,8 @@ interface WorkflowBuilderProps {
 
 export function WorkflowBuilder({ workflowId, userId }: WorkflowBuilderProps) {
   const { session } = useAuth();
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [configDialogOpen, setConfigDialogOpen] = useState(false);
