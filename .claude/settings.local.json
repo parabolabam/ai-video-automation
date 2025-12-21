@@ -69,7 +69,10 @@
       "Bash(export DOCKER_HOST=unix:///Users/parabolabam/.colima/default/docker.sock)",
       "Bash(gh auth token)",
       "Bash(docker save:*)",
-      "Bash(docker buildx:*)"
+      "Bash(docker buildx:*)",
+      "Bash(gh run list:*)",
+      "Bash(git pull:*)",
+      "Bash(gh run watch:*)"
     ]
   }
 }
