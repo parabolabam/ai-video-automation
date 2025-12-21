@@ -28,6 +28,22 @@ envsubst '${DOMAIN} ${BACKEND_HOST} ${BACKEND_PORT} ${FRONTEND_HOST} ${FRONTEND_
 
 echo "Nginx configuration generated"
 
+# Check if SSL certificates exist
+SSL_CERT_PATH="/etc/letsencrypt/live/${DOMAIN}/fullchain.pem"
+if [ ! -f "$SSL_CERT_PATH" ]; then
+    echo "⚠️  SSL certificates not found at $SSL_CERT_PATH"
+    echo "Using HTTP-only configuration (SSL can be added later)"
+
+    # Use HTTP-only configuration
+    envsubst '${DOMAIN} ${BACKEND_HOST} ${BACKEND_PORT} ${FRONTEND_HOST} ${FRONTEND_PORT}' \
+      < /etc/nginx/conf.d/vingine-http-only.conf.template \
+      > /etc/nginx/conf.d/vingine.conf
+
+    echo "HTTP-only configuration applied"
+else
+    echo "✅ SSL certificates found, using HTTPS configuration"
+fi
+
 # Test configuration
 nginx -t
 
