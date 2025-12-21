@@ -3,9 +3,10 @@ FROM nginx:1.29.4-alpine
 # Install tools for dynamic configuration
 RUN apk add --no-cache gettext
 
-# Copy nginx configuration template
+# Copy nginx configuration templates
 COPY nginx.conf.template /etc/nginx/nginx.conf.template
 COPY vingine.conf.template /etc/nginx/conf.d/vingine.conf.template
+COPY vingine-http-only.conf.template /etc/nginx/conf.d/vingine-http-only.conf.template
 
 # Copy entrypoint script
 COPY docker-entrypoint.sh /docker-entrypoint.sh
