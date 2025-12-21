@@ -38,16 +38,21 @@ export async function runWorkflowStream({ workflow_id, user_id, input, onEvent, 
     buffer += decoder.decode(value, { stream: true });
     const lines = buffer.split('\n');
 
-    // Process all complete lines
-    buffer = lines.pop() || ''; // Keep incomplete line in buffer
+    // Process all complete lines (keep incomplete line in buffer)
+    buffer = lines.pop() || '';
 
     for (const line of lines) {
-      if (line.trim()) {
-        try {
-          const event = JSON.parse(line);
-          onEvent(event);
-        } catch (e) {
-          console.error("Failed to parse event", line, e);
+      const trimmed = line.trim();
+      if (trimmed.startsWith('data:')) {
+        // SSE format: data: {json}
+        const jsonStr = trimmed.substring(5).trim();
+        if (jsonStr) {
+          try {
+            const event = JSON.parse(jsonStr);
+            onEvent(event);
+          } catch (e) {
+            console.error("Failed to parse SSE event", jsonStr, e);
+          }
         }
       }
     }

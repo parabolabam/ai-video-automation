@@ -10,6 +10,8 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.job import Job
 import asyncio
+import subprocess
+import sys
 
 from features.platform.runner import DynamicWorkflowRunner
 
@@ -39,6 +41,8 @@ class SchedulerService:
         if not self.scheduler.running:
             self.scheduler.start()
             logger.info("Scheduler started")
+            # Auto-register the main pipeline job
+            self.register_main_pipeline_job()
 
     def shutdown(self):
         """Shutdown the scheduler"""
@@ -55,6 +59,33 @@ class SchedulerService:
             logger.info(f"Scheduled workflow {workflow_id} completed: {result}")
         except Exception as e:
             logger.error(f"Scheduled workflow {workflow_id} failed: {e}")
+
+    async def _run_main_pipeline(self, **kwargs):
+        """Execute the main_v2.py pipeline as a scheduled job"""
+        try:
+            logger.info("🎬 Running main_v2.py pipeline...")
+
+            # Run main_v2.py using subprocess
+            process = await asyncio.create_subprocess_exec(
+                sys.executable,
+                "main_v2.py",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+
+            stdout, stderr = await process.communicate()
+
+            if process.returncode == 0:
+                logger.info(f"✅ main_v2.py pipeline completed successfully")
+                if stdout:
+                    logger.info(f"Output: {stdout.decode()[:500]}")  # Log first 500 chars
+            else:
+                logger.error(f"❌ main_v2.py pipeline failed with code {process.returncode}")
+                if stderr:
+                    logger.error(f"Error: {stderr.decode()}")
+
+        except Exception as e:
+            logger.error(f"Failed to run main_v2.py pipeline: {e}")
 
     def add_cron_job(
         self,
@@ -304,6 +335,7 @@ class SchedulerService:
         interval_hours = job.kwargs.get('interval_hours')
         interval_minutes = job.kwargs.get('interval_minutes')
         interval_seconds = job.kwargs.get('interval_seconds')
+        is_main_pipeline = job.kwargs.get('is_main_pipeline', False)
 
         # Determine schedule type and description
         schedule_type = 'cron' if cron_expression else 'interval'
@@ -322,15 +354,53 @@ class SchedulerService:
         return {
             'job_id': job.id,
             'name': job.name,
-            'workflow_id': workflow_id,
-            'user_id': user_id,
+            'workflow_id': workflow_id if not is_main_pipeline else 'main_pipeline',
+            'user_id': user_id if not is_main_pipeline else 'system',
             'input_text': input_text,
             'schedule_type': schedule_type,
             'schedule': schedule_description,
             'next_run_time': job.next_run_time.isoformat() if job.next_run_time else None,
             'paused': job.next_run_time is None,
             'trigger': str(job.trigger),
+            'is_main_pipeline': is_main_pipeline,
         }
+
+    def register_main_pipeline_job(self):
+        """
+        Register the main_v2.py pipeline to run every 5 hours
+        This is the primary constraint - runs automatically on backend startup
+        """
+        job_id = "main_pipeline_v2"
+
+        try:
+            # Check if job already exists
+            existing_job = self.scheduler.get_job(job_id)
+            if existing_job:
+                logger.info(f"Main pipeline job already registered: {job_id}")
+                return existing_job
+
+            # Run every 5 hours
+            trigger = IntervalTrigger(hours=5)
+
+            job = self.scheduler.add_job(
+                self._run_main_pipeline,
+                trigger=trigger,
+                id=job_id,
+                name="Main Video Pipeline (main_v2.py)",
+                replace_existing=True,
+                kwargs={
+                    'is_main_pipeline': True,
+                    'interval_hours': 5,
+                },
+                misfire_grace_time=3600  # 1 hour grace period
+            )
+
+            logger.info(f"✅ Main pipeline job registered successfully: {job_id} (runs every 5 hours)")
+            return job
+
+        except Exception as e:
+            logger.error(f"Failed to register main pipeline job: {e}")
+            return None
 
 
 # Global scheduler instance

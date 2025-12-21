@@ -126,6 +126,33 @@ async def run_workflow_stream(
 
     return StreamingResponse(event_generator(), media_type="application/x-ndjson")
 
+@app.post("/api/run/stream")
+async def run_workflow_stream_sse(
+    request: WorkflowExecutionRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Stream workflow execution events via SSE (Server-Sent Events).
+    This is the endpoint used by the frontend workflow visualizer.
+    Requires authentication.
+    """
+    logger.info(f"Received SSE stream request: workflow={request.workflow_id}, user={current_user['email']}")
+
+    # Verify user can only access their own workflows
+    verify_user_access(request.user_id, current_user)
+
+    async def event_generator():
+        try:
+            runner = DynamicWorkflowRunner(request.workflow_id, request.user_id)
+            async for event in runner.run_stream(request.input):
+                # SSE format: data: {json}\n\n
+                yield f"data: {json.dumps(event)}\n\n"
+        except Exception as e:
+            logger.error(f"SSE Stream Error: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
 @app.post("/api/run")
 async def run_workflow(
     request: WorkflowExecutionRequest,
