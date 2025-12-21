@@ -86,8 +86,8 @@ services:
       - FRONTEND_HOST=frontend
       - FRONTEND_PORT=3000
     volumes:
-      - letsencrypt_certs:/etc/letsencrypt:ro
-      - certbot_www:/var/www/certbot:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/www/certbot:/var/www/certbot:ro
     networks:
       - app-network
     depends_on:
@@ -110,8 +110,4 @@ networks:
 
 volumes:
   backend_data:
-    driver: local
-  letsencrypt_certs:
-    driver: local
-  certbot_www:
     driver: local
