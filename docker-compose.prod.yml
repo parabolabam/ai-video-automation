@@ -47,11 +47,12 @@ services:
       - "3000:3000"
     environment:
       # Frontend environment variables
-      - NEXT_PUBLIC_API_URL=https://vingine.duckdns.org
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+      - NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL}
       - NEXT_PUBLIC_SUPABASE_URL=${SUPABASE_URL}
       - NEXT_PUBLIC_SUPABASE_ANON_KEY=${SUPABASE_KEY}
       # Internal backend URL for server-side API calls
-      - API_URL=http://backend:8000
+      - API_URL=${API_URL}
     networks:
       - app-network
     depends_on:
@@ -93,6 +94,7 @@ services:
     depends_on:
       - backend
       - frontend
+      - certbot
     healthcheck:
       test: ["CMD", "nginx", "-t"]
       interval: 30s
@@ -103,6 +105,21 @@ services:
         limits:
           cpus: '0.5'
           memory: 256M
+
+  certbot:
+    image: certbot/certbot:latest
+    container_name: ai-video-certbot
+    volumes:
+      - letsencrypt_certs:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot; sleep 12h & wait $${!}; done;'"
+    networks:
+      - app-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
 
 networks:
   app-network:
