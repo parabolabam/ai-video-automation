@@ -199,7 +199,7 @@ jobs:
             docker rm ai-video-backend 2>/dev/null || true
 
             # Deploy backend using docker-compose
-            docker-compose -f docker-compose.prod.yml up -d backend
+            docker-compose -f docker-compose.prod.yml up -d --no-deps backend
 
             # Health check
             sleep 5
@@ -237,7 +237,7 @@ jobs:
             docker rm ai-video-frontend 2>/dev/null || true
 
             # Deploy frontend using docker-compose
-            docker-compose -f docker-compose.prod.yml up -d frontend
+            docker-compose -f docker-compose.prod.yml up -d --no-deps frontend
 
             # Health check
             sleep 5
@@ -275,7 +275,7 @@ jobs:
             docker rm ai-video-nginx 2>/dev/null || true
 
             # Deploy nginx using docker-compose
-            docker-compose -f docker-compose.prod.yml up -d nginx
+            docker-compose -f docker-compose.prod.yml up -d --no-deps nginx
 
             # Health check
             sleep 5
