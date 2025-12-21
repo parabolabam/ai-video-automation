@@ -1,0 +1,291 @@
+name: Deploy All Services
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      deploy_backend:
+        description: 'Deploy Backend'
+        required: false
+        default: true
+        type: boolean
+      deploy_frontend:
+        description: 'Deploy Frontend'
+        required: false
+        default: true
+        type: boolean
+      deploy_nginx:
+        description: 'Deploy Nginx'
+        required: false
+        default: true
+        type: boolean
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  # Build jobs run sequentially
+  build-backend:
+    name: Build Backend Image
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event.inputs.deploy_backend == 'true'
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}/backend
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+
+  build-frontend:
+    name: Build Frontend Image
+    runs-on: ubuntu-latest
+    needs: build-backend
+    if: always() && (github.event_name == 'push' || github.event.inputs.deploy_frontend == 'true')
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}/frontend
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./web
+          file: ./web/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
+            NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+            NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+
+  build-nginx:
+    name: Build Nginx Image
+    runs-on: ubuntu-latest
+    needs: build-frontend
+    if: always() && (github.event_name == 'push' || github.event.inputs.deploy_nginx == 'true')
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}/nginx
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Nginx image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./nginx
+          file: ./nginx/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+
+  # Deploy jobs run in parallel after all builds complete
+  deploy-backend:
+    name: Deploy Backend
+    runs-on: ubuntu-latest
+    needs: [build-backend, build-frontend, build-nginx]
+    if: always() && needs.build-backend.result == 'success' && (github.event_name == 'push' || github.event.inputs.deploy_backend == 'true')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy Backend to Digital Ocean
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DO_DROPLET_IP }}
+          username: ${{ secrets.DO_DROPLET_USER }}
+          key: ${{ secrets.DO_SSH_PRIVATE_KEY }}
+          port: 22
+          script: |
+            set -e
+            cd /opt/ai-video-automation
+
+            # Login to GHCR
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            # Pull latest backend image
+            docker pull ghcr.io/${{ github.repository }}/backend:latest
+
+            # Deploy backend using docker-compose
+            docker-compose -f docker-compose.prod.yml up -d --no-deps --force-recreate backend
+
+            # Health check
+            sleep 5
+            docker-compose -f docker-compose.prod.yml exec -T backend curl -f http://localhost:8000/health || echo "Backend health check warning"
+
+  deploy-frontend:
+    name: Deploy Frontend
+    runs-on: ubuntu-latest
+    needs: [build-backend, build-frontend, build-nginx]
+    if: always() && needs.build-frontend.result == 'success' && (github.event_name == 'push' || github.event.inputs.deploy_frontend == 'true')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy Frontend to Digital Ocean
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DO_DROPLET_IP }}
+          username: ${{ secrets.DO_DROPLET_USER }}
+          key: ${{ secrets.DO_SSH_PRIVATE_KEY }}
+          port: 22
+          script: |
+            set -e
+            cd /opt/ai-video-automation
+
+            # Login to GHCR
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            # Pull latest frontend image
+            docker pull ghcr.io/${{ github.repository }}/frontend:latest
+
+            # Deploy frontend using docker-compose
+            docker-compose -f docker-compose.prod.yml up -d --no-deps --force-recreate frontend
+
+            # Health check
+            sleep 5
+            docker-compose -f docker-compose.prod.yml exec -T frontend curl -f http://localhost:3000 || echo "Frontend health check warning"
+
+  deploy-nginx:
+    name: Deploy Nginx
+    runs-on: ubuntu-latest
+    needs: [build-backend, build-frontend, build-nginx]
+    if: always() && needs.build-nginx.result == 'success' && (github.event_name == 'push' || github.event.inputs.deploy_nginx == 'true')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy Nginx to Digital Ocean
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DO_DROPLET_IP }}
+          username: ${{ secrets.DO_DROPLET_USER }}
+          key: ${{ secrets.DO_SSH_PRIVATE_KEY }}
+          port: 22
+          script: |
+            set -e
+            cd /opt/ai-video-automation
+
+            # Login to GHCR
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            # Pull latest nginx image
+            docker pull ghcr.io/${{ github.repository }}/nginx:latest
+
+            # Deploy nginx using docker-compose
+            docker-compose -f docker-compose.prod.yml up -d --no-deps --force-recreate nginx
+
+            # Health check
+            sleep 5
+            curl -f https://vingine.duckdns.org/health || echo "Nginx health check warning"
+
+  deployment-summary:
+    name: Deployment Summary
+    runs-on: ubuntu-latest
+    needs: [deploy-backend, deploy-frontend, deploy-nginx]
+    if: always()
+
+    steps:
+      - name: Summary
+        run: |
+          echo "=========================================="
+          echo "Deployment Summary"
+          echo "=========================================="
+          echo "Backend: ${{ needs.deploy-backend.result }}"
+          echo "Frontend: ${{ needs.deploy-frontend.result }}"
+          echo "Nginx: ${{ needs.deploy-nginx.result }}"
+          echo "=========================================="
+          echo "Services deployed to: https://vingine.duckdns.org"
+          echo "=========================================="
