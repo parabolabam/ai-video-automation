@@ -118,7 +118,7 @@ jobs:
 
     environment:
       name: production-backend
-      url: http://${{ secrets.DO_DROPLET_IP }}:8000
+      url: https://vingine.duckdns.org
 
     steps:
       - name: Checkout code
