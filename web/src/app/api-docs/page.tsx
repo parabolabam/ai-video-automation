@@ -46,7 +46,7 @@ export default function ApiDocsPage() {
             `;
             iframe.contentWindow?.document.body.appendChild(script);
           }
-        } catch (e) {
+        } catch {
           // CORS restriction - iframe is cross-origin
           console.log('Cannot inject into iframe (cross-origin)');
         }
@@ -102,8 +102,8 @@ export default function ApiDocsPage() {
             <div className="absolute top-4 right-4 bg-yellow-500/10 border border-yellow-500/20 text-yellow-600 dark:text-yellow-400 px-4 py-2 rounded-lg text-sm max-w-md">
               <p className="font-semibold mb-1">Manual Authorization Required</p>
               <p className="text-xs">
-                Due to browser security, you need to click "Authorize" in Swagger UI and paste your token manually.
-                Use the "Copy Token" button from your dashboard.
+                Due to browser security, you need to click &quot;Authorize&quot; in Swagger UI and paste your token manually.
+                Use the &quot;Copy Token&quot; button from your dashboard.
               </p>
             </div>
           </div>

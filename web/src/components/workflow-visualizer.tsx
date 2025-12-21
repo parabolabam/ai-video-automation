@@ -1,12 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useState, useRef } from 'react';
-import ReactFlow, { 
-  Node, 
-  Edge, 
-  Background, 
-  Controls, 
-  useNodesState, 
+import { useEffect, useState, useRef } from 'react';
+import ReactFlow, {
+  Node,
+  Edge,
+  Background,
+  Controls,
+  useNodesState,
   useEdgesState,
   MarkerType
 } from 'reactflow';
@@ -18,10 +18,8 @@ import { useAuth } from '@/lib/auth-context';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
 import { ScrollArea } from './ui/scroll-area';
-import { Separator } from './ui/separator';
 import { Input } from './ui/input';
-import { Badge } from './ui/badge';
-import { Play, Loader2, Terminal, CheckCircle2, Circle } from 'lucide-react';
+import { Play, Loader2, Terminal } from 'lucide-react';
 
 interface WorkflowVisualizerProps {
   workflowId: string;
@@ -60,7 +58,7 @@ export function WorkflowVisualizer({ workflowId, userId }: WorkflowVisualizerPro
       
       // Simple layout: position them linearly for now (or basic grid)
       // A real app would use dagre for auto-layout.
-      const newNodes: Node[] = agents.map((agent: any, index: number) => ({
+      const newNodes: Node[] = agents.map((agent: { id: string; name: string }, index: number) => ({
         id: agent.id,
         position: { x: 250, y: index * 150 + 50 },
         data: { label: agent.name },
@@ -76,14 +74,14 @@ export function WorkflowVisualizer({ workflowId, userId }: WorkflowVisualizerPro
         }
       }));
 
-      const newEdges: Edge[] = workflow_connections.map((conn: any) => ({
+      const newEdges: Edge[] = workflow_connections.map((conn: { id: string; from_agent_id: string; to_agent_id: string }) => ({
         id: conn.id,
         source: conn.from_agent_id,
         target: conn.to_agent_id,
         markerEnd: { type: MarkerType.ArrowClosed },
         animated: false,
         style: { stroke: '#555' }
-      })).filter((e: any) => e.source && e.target); // Filter start nodes
+      })).filter((e: Edge) => e.source && e.target); // Filter start nodes
 
       setNodes(newNodes);
       setEdges(newEdges);
@@ -97,7 +95,7 @@ export function WorkflowVisualizer({ workflowId, userId }: WorkflowVisualizerPro
         const isActive = node.id === activeNodeId;
         const isCompleted = completedNodes.has(node.id);
         
-        let style = { ...node.style };
+        const style = { ...node.style };
         if (isActive) {
           style.border = '2px solid #22c55e'; // Green
           style.boxShadow = '0 0 10px #22c55e';
@@ -167,8 +165,8 @@ export function WorkflowVisualizer({ workflowId, userId }: WorkflowVisualizerPro
           }
         }
       });
-    } catch (e: any) {
-      setLogs(prev => [...prev, `Stream connection error: ${e.message}`]);
+    } catch (e) {
+      setLogs(prev => [...prev, `Stream connection error: ${e instanceof Error ? e.message : 'Unknown error'}`]);
     } finally {
       setIsRunning(false);
       setActiveNodeId(null);

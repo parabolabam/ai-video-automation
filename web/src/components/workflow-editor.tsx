@@ -1,12 +1,12 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import ReactFlow, { 
-  Node, 
-  Edge, 
-  Background, 
-  Controls, 
-  useNodesState, 
+import ReactFlow, {
+  Node,
+  Edge,
+  Background,
+  Controls,
+  useNodesState,
   useEdgesState,
   Connection,
   addEdge,
@@ -20,25 +20,21 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
-import { 
-  Sheet, 
-  SheetContent, 
-  SheetDescription, 
-  SheetHeader, 
-  SheetTitle 
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle
 } from './ui/sheet';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Loader2, Save, Plus, Settings } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast'; // We might need to create this or use simple alert
+import { Loader2, Save, Plus } from 'lucide-react';
 
 interface WorkflowEditorProps {
   workflowId: string;
-  userId: string;
 }
 
-const INITIAL_NODE_Y = 100;
-
-export function WorkflowEditor({ workflowId, userId }: WorkflowEditorProps) {
+export function WorkflowEditor({ workflowId }: WorkflowEditorProps) {
   // Graph State
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
@@ -75,8 +71,8 @@ export function WorkflowEditor({ workflowId, userId }: WorkflowEditorProps) {
   useEffect(() => {
     if (initialData) {
       const { agents, workflow_connections } = initialData;
-      
-      const loadedNodes: Node[] = agents.map((agent: any, index: number) => ({
+
+      const loadedNodes: Node[] = agents.map((agent: { id: string; name: string; role: string; model: string; system_instructions: string; tools: string[] }, index: number) => ({
         id: agent.id,
         position: { x: 250, y: index * 150 + 50 },
         data: { 
@@ -98,13 +94,13 @@ export function WorkflowEditor({ workflowId, userId }: WorkflowEditorProps) {
         }
       }));
 
-      const loadedEdges: Edge[] = workflow_connections.map((conn: any) => ({
+      const loadedEdges: Edge[] = workflow_connections.map((conn: { id: string; from_agent_id: string; to_agent_id: string }) => ({
         id: conn.id,
         source: conn.from_agent_id,
         target: conn.to_agent_id,
         markerEnd: { type: MarkerType.ArrowClosed },
         style: { stroke: '#888' }
-      })).filter((e: any) => e.source && e.target);
+      })).filter((e: Edge) => e.source && e.target);
 
       setNodes(loadedNodes);
       setEdges(loadedEdges);
@@ -116,7 +112,7 @@ export function WorkflowEditor({ workflowId, userId }: WorkflowEditorProps) {
     setEdges((eds) => addEdge({ ...params, markerEnd: { type: MarkerType.ArrowClosed } }, eds));
   }, [setEdges]);
 
-  const onNodeClick = useCallback((_: any, node: Node) => {
+  const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
     setSelectedNodeId(node.id);
     setEditForm({
       name: node.data.label,
@@ -267,7 +263,7 @@ export function WorkflowEditor({ workflowId, userId }: WorkflowEditorProps) {
           <SheetContent className="overflow-y-auto">
              <SheetHeader>
                <SheetTitle>Edit Agent</SheetTitle>
-               <SheetDescription>Configure the agent's behavior and tools.</SheetDescription>
+               <SheetDescription>Configure the agent&apos;s behavior and tools.</SheetDescription>
              </SheetHeader>
              
              <div className="grid gap-4 py-4">

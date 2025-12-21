@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/dialog"
 import { Loader2, Play, AlertCircle, Plus, Trash2 } from 'lucide-react';
 import { useState, useTransition } from 'react';
-import { runWorkflow as runWorkflowAction, deleteWorkflow } from '@/app/actions/workflow';
+import { deleteWorkflow } from '@/app/actions/workflow';
 import { useAuth } from '@/lib/auth-context';
 
 export function WorkflowsList({ userId }: { userId?: string }) {
@@ -66,7 +66,6 @@ export function WorkflowsList({ userId }: { userId?: string }) {
           return;
         }
 
-        const data = await response.json();
         setCreateDialogOpen(false);
         setNewWorkflowName("");
         setNewWorkflowDescription("");

@@ -30,10 +30,10 @@ interface WorkflowBuilderProps {
   userId: string;
 }
 
-export function WorkflowBuilder({ workflowId, userId }: WorkflowBuilderProps) {
+export function WorkflowBuilder({ workflowId }: WorkflowBuilderProps) {
   const { session } = useAuth();
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [configDialogOpen, setConfigDialogOpen] = useState(false);
@@ -72,7 +72,14 @@ export function WorkflowBuilder({ workflowId, userId }: WorkflowBuilderProps) {
         const data = await response.json();
 
         // Convert agents to nodes
-        const loadedNodes: Node[] = data.agents?.map((agent: any, index: number) => ({
+        const loadedNodes: Node[] = data.agents?.map((agent: {
+          id: string;
+          name: string;
+          role: string;
+          model: string;
+          system_instructions: string;
+          tools: string[];
+        }, index: number) => ({
           id: agent.id,
           type: 'agent',
           position: { x: 100 + (index % 3) * 300, y: 100 + Math.floor(index / 3) * 200 },
@@ -86,11 +93,15 @@ export function WorkflowBuilder({ workflowId, userId }: WorkflowBuilderProps) {
         })) || [];
 
         // Convert connections to edges
-        const loadedEdges: Edge[] = data.workflow_connections?.map((conn: any) => ({
+        const loadedEdges: Edge[] = data.workflow_connections?.map((conn: {
+          id: string;
+          from_agent_id: string;
+          to_agent_id: string;
+        }) => ({
           id: conn.id,
           source: conn.from_agent_id,
           target: conn.to_agent_id,
-          type: 'default',
+          type: 'default' as const,
         })).filter((e: Edge) => e.source && e.target) || [];
 
         setNodes(loadedNodes);
@@ -145,10 +156,22 @@ export function WorkflowBuilder({ workflowId, userId }: WorkflowBuilderProps) {
     setEditingNodeId(null);
   };
 
-  const getCurrentAgentConfig = () => {
+  const getCurrentAgentConfig = (): {
+    label: string;
+    role: string;
+    model: string;
+    systemInstructions: string;
+    tools: string[];
+  } | undefined => {
     if (!editingNodeId) return undefined;
     const node = nodes.find((n) => n.id === editingNodeId);
-    return node?.data;
+    return node?.data as {
+      label: string;
+      role: string;
+      model: string;
+      systemInstructions: string;
+      tools: string[];
+    } | undefined;
   };
 
   const saveWorkflow = async () => {
@@ -174,7 +197,7 @@ export function WorkflowBuilder({ workflowId, userId }: WorkflowBuilderProps) {
       // Delete existing agents
       if (existingAgents?.agents) {
         await Promise.all(
-          existingAgents.agents.map((agent: any) =>
+          existingAgents.agents.map((agent: { id: string }) =>
             fetch(`${apiUrl}/api/agents/${agent.id}`, {
               method: 'DELETE',
               headers: {

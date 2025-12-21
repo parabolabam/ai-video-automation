@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useTransition } from 'react';
+import { useEffect, useState, useTransition, useCallback } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import {
   listCronJobs,
@@ -50,7 +50,7 @@ export function CronJobsDashboard() {
   const [newInput, setNewInput] = useState('');
   const [newCronExpression, setNewCronExpression] = useState('0 */6 * * *');
 
-  const loadJobs = async () => {
+  const loadJobs = useCallback(async () => {
     setLoading(true);
     setError(null);
     const result = await listCronJobs();
@@ -61,12 +61,32 @@ export function CronJobsDashboard() {
       setError(result.error || 'Failed to load cron jobs');
     }
     setLoading(false);
-  };
+  }, []);
 
   useEffect(() => {
-    if (user) {
-      loadJobs();
-    }
+    if (!user) return;
+
+    let cancelled = false;
+    const fetchJobs = async () => {
+      setLoading(true);
+      setError(null);
+      const result = await listCronJobs();
+
+      if (!cancelled) {
+        if (result.success) {
+          setJobs(result.data.jobs || []);
+        } else {
+          setError(result.error || 'Failed to load cron jobs');
+        }
+        setLoading(false);
+      }
+    };
+
+    fetchJobs();
+
+    return () => {
+      cancelled = true;
+    };
   }, [user]);
 
   const handleCreateJob = async () => {
@@ -234,7 +254,7 @@ export function CronJobsDashboard() {
                   onChange={(e) => setNewCronExpression(e.target.value)}
                 />
                 <p className="text-xs text-muted-foreground mt-1">
-                  Examples: "0 */6 * * *" (every 6 hours), "0 9 * * *" (daily at 9 AM)
+                  Examples: &quot;0 */6 * * *&quot; (every 6 hours), &quot;0 9 * * *&quot; (daily at 9 AM)
                 </p>
               </div>
               <Button

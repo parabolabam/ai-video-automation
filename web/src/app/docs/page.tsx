@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
 import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
 
 // Dynamically import SwaggerUI to avoid SSR issues
 const SwaggerUI = dynamic(() => import('swagger-ui-react'), { ssr: false });
@@ -12,7 +13,7 @@ const SwaggerUI = dynamic(() => import('swagger-ui-react'), { ssr: false });
 export default function DocsPage() {
   const { user, loading } = useAuth();
   const [token, setToken] = useState<string | null>(null);
-  const [spec, setSpec] = useState<any>(null);
+  const [spec, setSpec] = useState<Record<string, unknown> | null>(null);
 
   useEffect(() => {
     const getToken = async () => {
@@ -60,12 +61,12 @@ export default function DocsPage() {
                   Token Injected
                 </div>
               )}
-              <a
+              <Link
                 href="/"
                 className="text-sm text-muted-foreground hover:text-foreground underline"
               >
                 ← Back to Dashboard
-              </a>
+              </Link>
             </div>
           </div>
         </div>
@@ -74,14 +75,16 @@ export default function DocsPage() {
           {spec && token ? (
             <SwaggerUI
               spec={spec}
-              onComplete={(system: any) => {
+              onComplete={(system: unknown) => {
                 // Auto-inject the bearer token
-                system.preauthorizeApiKey('HTTPBearer', token);
+                if (system && typeof system === 'object' && 'preauthorizeApiKey' in system && typeof system.preauthorizeApiKey === 'function') {
+                  system.preauthorizeApiKey('HTTPBearer', token);
+                }
               }}
-              requestInterceptor={(req: any) => {
+              requestInterceptor={(req: unknown) => {
                 // Ensure bearer token is always included
-                if (token && !req.headers.Authorization) {
-                  req.headers.Authorization = `Bearer ${token}`;
+                if (req && typeof req === 'object' && 'headers' in req && req.headers && typeof req.headers === 'object' && !('Authorization' in req.headers)) {
+                  (req.headers as Record<string, string>).Authorization = `Bearer ${token}`;
                 }
                 return req;
               }}
