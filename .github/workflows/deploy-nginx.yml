@@ -1,0 +1,171 @@
+name: Deploy Nginx (Docker Compose)
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to deploy'
+        required: true
+        default: 'deployment/github-actions-setup'
+        type: choice
+        options:
+          - main
+          - deployment/github-actions-setup
+          - staging
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/nginx
+
+jobs:
+  build-and-push:
+    name: Build & Push Nginx Image
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./nginx
+          file: ./nginx/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+
+  deploy:
+    name: Deploy Nginx Container
+    runs-on: ubuntu-latest
+    needs: build-and-push
+
+    steps:
+      - name: Checkout code (for docker-compose.prod.yml)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
+
+      - name: Copy docker-compose.prod.yml to droplet
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DO_DROPLET_IP }}
+          username: ${{ secrets.DO_DROPLET_USER }}
+          key: ${{ secrets.DO_SSH_PRIVATE_KEY }}
+          port: ${{ secrets.DO_SSH_PORT || 22 }}
+          source: "docker-compose.prod.yml"
+          target: "/opt/ai-video-automation/"
+
+      - name: Deploy to Digital Ocean via Docker Compose
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DO_DROPLET_IP }}
+          username: ${{ secrets.DO_DROPLET_USER }}
+          key: ${{ secrets.DO_SSH_PRIVATE_KEY }}
+          port: ${{ secrets.DO_SSH_PORT || 22 }}
+          script: |
+            set -e
+
+            echo "=========================================="
+            echo "🚀 Deploying Nginx Container"
+            echo "=========================================="
+
+            # Navigate to app directory
+            cd /opt/ai-video-automation
+
+            # Login to GHCR
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
+
+            # Pull latest nginx image
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+
+            # Ensure SSL certificates exist
+            if [ ! -d /opt/ai-video-automation/letsencrypt/live/vingine.duckdns.org ]; then
+              echo "⚠️  Warning: SSL certificates not found"
+              echo "Please run SSL setup first or nginx will fail to start"
+              echo "Location: /opt/ai-video-automation/letsencrypt/live/vingine.duckdns.org"
+            fi
+
+            # Ensure .env exists
+            if [ ! -f .env ]; then
+              echo "Creating .env file..."
+              cat > .env << 'ENV_EOF'
+            KIE_API_KEY=${{ secrets.KIE_API_KEY }}
+            OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+            SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+            SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}
+            SUPABASE_SERVICE_KEY=${{ secrets.SUPABASE_SERVICE_KEY }}
+            YOUTUBE_CLIENT_ID=${{ secrets.YOUTUBE_CLIENT_ID }}
+            YOUTUBE_CLIENT_SECRET=${{ secrets.YOUTUBE_CLIENT_SECRET }}
+            YOUTUBE_REFRESH_TOKEN=${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+            ENV_EOF
+            fi
+
+            # Recreate only nginx service
+            docker-compose -f docker-compose.prod.yml up -d --no-deps --force-recreate nginx
+
+            # Wait for nginx to start
+            echo "Waiting for nginx to start..."
+            sleep 5
+
+            # Test nginx configuration
+            if docker exec ai-video-nginx nginx -t 2>/dev/null; then
+              echo "✅ Nginx configuration valid"
+            else
+              echo "❌ Nginx configuration has errors"
+              docker logs --tail 50 ai-video-nginx
+              exit 1
+            fi
+
+            # Show nginx status
+            docker ps -f name=ai-video-nginx --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+
+            echo "=========================================="
+            echo "✅ Nginx Deployment Complete"
+            echo "=========================================="
+
+      - name: Deployment summary
+        if: success()
+        run: |
+          echo "=========================================="
+          echo "✅ Nginx Deployment Complete"
+          echo "=========================================="
+          echo "Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          echo "Container: ai-video-nginx"
+          echo "URL: https://vingine.duckdns.org"
+          echo "=========================================="
+          echo ""
+          echo "Nginx routes:"
+          echo "  / → Frontend (Next.js)"
+          echo "  /api/* → Backend (FastAPI)"
+          echo "  /health → Backend health check"
+          echo "  /docs → Backend API documentation"

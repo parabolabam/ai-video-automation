@@ -1,0 +1,117 @@
+version: '3.8'
+
+# Production Docker Compose configuration for Digital Ocean deployment
+# This file defines the full stack: backend, frontend, and nginx
+
+services:
+  backend:
+    image: ghcr.io/parabolabam/ai-video-automation/backend:latest
+    container_name: ai-video-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # Secrets injected via deployment workflow
+      - KIE_API_KEY=${KIE_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      - YOUTUBE_CLIENT_ID=${YOUTUBE_CLIENT_ID}
+      - YOUTUBE_CLIENT_SECRET=${YOUTUBE_CLIENT_SECRET}
+      - YOUTUBE_REFRESH_TOKEN=${YOUTUBE_REFRESH_TOKEN}
+    volumes:
+      - backend_data:/data
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+
+  frontend:
+    image: ghcr.io/parabolabam/ai-video-automation/frontend:latest
+    container_name: ai-video-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      # Frontend environment variables
+      - NEXT_PUBLIC_API_URL=https://vingine.duckdns.org
+      - NEXT_PUBLIC_SUPABASE_URL=${SUPABASE_URL}
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=${SUPABASE_KEY}
+      # Internal backend URL for server-side API calls
+      - API_URL=http://backend:8000
+    networks:
+      - app-network
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  nginx:
+    image: ghcr.io/parabolabam/ai-video-automation/nginx:latest
+    container_name: ai-video-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN=vingine.duckdns.org
+      - BACKEND_HOST=backend
+      - BACKEND_PORT=8000
+      - FRONTEND_HOST=frontend
+      - FRONTEND_PORT=3000
+    volumes:
+      - letsencrypt_certs:/etc/letsencrypt:ro
+      - certbot_www:/var/www/certbot:ro
+    networks:
+      - app-network
+    depends_on:
+      - backend
+      - frontend
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  backend_data:
+    driver: local
+  letsencrypt_certs:
+    driver: local
+  certbot_www:
+    driver: local
