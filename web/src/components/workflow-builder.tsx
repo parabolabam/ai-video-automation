@@ -70,9 +70,12 @@ export function WorkflowBuilder({ workflowId }: WorkflowBuilderProps) {
         }
 
         const data = await response.json();
+        const workflow = data.workflow;
+
+        console.log('[WorkflowBuilder] Loaded workflow:', workflow);
 
         // Convert agents to nodes
-        const loadedNodes: Node[] = data.agents?.map((agent: {
+        const loadedNodes: Node[] = workflow.agents?.map((agent: {
           id: string;
           name: string;
           role: string;
@@ -93,7 +96,7 @@ export function WorkflowBuilder({ workflowId }: WorkflowBuilderProps) {
         })) || [];
 
         // Convert connections to edges
-        const loadedEdges: Edge[] = data.workflow_connections?.map((conn: {
+        const loadedEdges: Edge[] = workflow.workflow_connections?.map((conn: {
           id: string;
           from_agent_id: string;
           to_agent_id: string;
@@ -195,9 +198,9 @@ export function WorkflowBuilder({ workflowId }: WorkflowBuilderProps) {
       ).then(res => res.json());
 
       // Delete existing agents
-      if (existingAgents?.agents) {
+      if (existingAgents?.workflow?.agents) {
         await Promise.all(
-          existingAgents.agents.map((agent: { id: string }) =>
+          existingAgents.workflow.agents.map((agent: { id: string }) =>
             fetch(`${apiUrl}/api/agents/${agent.id}`, {
               method: 'DELETE',
               headers: {

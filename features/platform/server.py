@@ -7,6 +7,10 @@ from typing import Dict, Any, Optional, List
 import uvicorn
 import logging
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 from features.platform.runner import DynamicWorkflowRunner
 from features.platform.auth import get_current_user, get_optional_user, verify_user_access, supabase
@@ -328,6 +332,15 @@ async def get_workflow(workflow_id: str, current_user: dict = Depends(get_curren
         workflow = result.data[0]
         if workflow["user_id"] != current_user["id"]:
             raise HTTPException(status_code=403, detail="You don't have permission to access this workflow")
+
+        # Fetch agents for this workflow
+        agents_result = supabase.table("agents").select("*").eq("workflow_id", workflow_id).execute()
+        workflow["agents"] = agents_result.data or []
+
+        # Fetch connections for this workflow
+        connections_result = supabase.table("workflow_connections").select("*").eq("workflow_id", workflow_id).execute()
+        workflow["workflow_connections"] = connections_result.data or []
+
         return {"status": "success", "workflow": workflow}
     except HTTPException:
         raise
@@ -373,6 +386,68 @@ async def delete_workflow(workflow_id: str, current_user: dict = Depends(get_cur
     except Exception as e:
         logger.error(f"Error deleting workflow: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to delete workflow: {str(e)}")
+
+# Save workflow graph (agents and connections)
+class AgentInput(BaseModel):
+    id: str
+    name: str
+    role: str
+    model: str = "gpt-4o"
+    system_instructions: str
+    tools: List[str] = []
+
+class ConnectionInput(BaseModel):
+    from_agent_id: Optional[str] = None
+    to_agent_id: str
+
+class SaveGraphRequest(BaseModel):
+    agents: List[AgentInput]
+    connections: List[ConnectionInput]
+
+@app.put("/api/workflows/{workflow_id}/graph")
+async def save_workflow_graph(workflow_id: str, request: SaveGraphRequest, current_user: dict = Depends(get_current_user)) -> Dict[str, Any]:
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Database not available")
+    try:
+        # Verify workflow ownership
+        existing = supabase.table("workflows").select("*").eq("id", workflow_id).execute()
+        if not existing.data:
+            raise HTTPException(status_code=404, detail=f"Workflow {workflow_id} not found")
+        if existing.data[0]["user_id"] != current_user["id"]:
+            raise HTTPException(status_code=403, detail="You don't have permission to update this workflow")
+
+        # Delete existing agents and connections for this workflow
+        supabase.table("workflow_connections").delete().eq("workflow_id", workflow_id).execute()
+        supabase.table("agents").delete().eq("workflow_id", workflow_id).execute()
+
+        # Insert new agents
+        for agent in request.agents:
+            agent_data = {
+                "id": agent.id,
+                "workflow_id": workflow_id,
+                "name": agent.name,
+                "role": agent.role,
+                "model": agent.model,
+                "system_instructions": agent.system_instructions,
+                "tools": agent.tools or []
+            }
+            supabase.table("agents").insert(agent_data).execute()
+
+        # Insert new connections
+        for conn in request.connections:
+            conn_data = {
+                "workflow_id": workflow_id,
+                "from_agent_id": conn.from_agent_id,
+                "to_agent_id": conn.to_agent_id
+            }
+            supabase.table("workflow_connections").insert(conn_data).execute()
+
+        return {"status": "success", "message": "Workflow graph saved successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error saving workflow graph: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to save workflow graph: {str(e)}")
 
 # AGENT ENDPOINTS
 

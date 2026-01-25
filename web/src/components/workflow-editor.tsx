@@ -15,7 +15,7 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import { v4 as uuidv4 } from 'uuid';
 
-import { trpc } from '@/lib/trpc';
+import { useWorkflow, useSaveWorkflowGraph } from '@/hooks/use-workflows';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -38,11 +38,11 @@ export function WorkflowEditor({ workflowId }: WorkflowEditorProps) {
   // Graph State
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-  
+
   // Selection / Editing State
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
-  
+
   // Temporary state for the node being edited
   const [editForm, setEditForm] = useState({
     name: '',
@@ -52,30 +52,27 @@ export function WorkflowEditor({ workflowId }: WorkflowEditorProps) {
     tools: [] as string[]
   });
 
-  const utils = trpc.useUtils();
-  const { data: initialData, isLoading } = trpc.workflow.get.useQuery({ id: workflowId }, {
-    refetchOnWindowFocus: false
-  });
-  
-  const saveMutation = trpc.workflow.saveGraph.useMutation({
-    onSuccess: () => {
-      alert("Workflow Saved!"); // Simple alert for MVP
-      utils.workflow.get.invalidate({ id: workflowId });
-    },
-    onError: (err) => {
-      alert(`Error saving: ${err.message}`);
-    }
-  });
+  const { data: initialData, isLoading, error } = useWorkflow(workflowId);
+  const saveMutation = useSaveWorkflowGraph(workflowId);
+
+  // Debug: Log the API response
+  useEffect(() => {
+    console.log('[WorkflowEditor] initialData:', initialData);
+    console.log('[WorkflowEditor] isLoading:', isLoading);
+    console.log('[WorkflowEditor] error:', error);
+  }, [initialData, isLoading, error]);
 
   // Load Initial Data
   useEffect(() => {
     if (initialData) {
       const { agents, workflow_connections } = initialData;
+      console.log('[WorkflowEditor] Loading agents:', agents);
+      console.log('[WorkflowEditor] Loading connections:', workflow_connections);
 
-      const loadedNodes: Node[] = agents.map((agent: { id: string; name: string; role: string; model: string; system_instructions: string; tools: string[] }, index: number) => ({
+      const loadedNodes: Node[] = agents.map((agent, index) => ({
         id: agent.id,
         position: { x: 250, y: index * 150 + 50 },
-        data: { 
+        data: {
           label: agent.name,
           role: agent.role,
           model: agent.model,
@@ -83,9 +80,9 @@ export function WorkflowEditor({ workflowId }: WorkflowEditorProps) {
           tools: agent.tools || []
         },
         type: 'default',
-        style: { 
-          border: '1px solid #777', 
-          padding: '10px', 
+        style: {
+          border: '1px solid #777',
+          padding: '10px',
           borderRadius: '5px',
           width: 180,
           textAlign: 'center',
@@ -94,13 +91,15 @@ export function WorkflowEditor({ workflowId }: WorkflowEditorProps) {
         }
       }));
 
-      const loadedEdges: Edge[] = workflow_connections.map((conn: { id: string; from_agent_id: string; to_agent_id: string }) => ({
-        id: conn.id,
-        source: conn.from_agent_id,
-        target: conn.to_agent_id,
-        markerEnd: { type: MarkerType.ArrowClosed },
-        style: { stroke: '#888' }
-      })).filter((e: Edge) => e.source && e.target);
+      const loadedEdges: Edge[] = workflow_connections
+        .filter((conn) => conn.from_agent_id && conn.to_agent_id)
+        .map((conn) => ({
+          id: conn.id,
+          source: conn.from_agent_id!,
+          target: conn.to_agent_id,
+          markerEnd: { type: MarkerType.ArrowClosed },
+          style: { stroke: '#888' }
+        }));
 
       setNodes(loadedNodes);
       setEdges(loadedEdges);
@@ -129,16 +128,16 @@ export function WorkflowEditor({ workflowId }: WorkflowEditorProps) {
     const newNode: Node = {
       id: newNodeId,
       position: { x: 250, y: nodes.length * 100 + 50 },
-      data: { 
-        label: 'New Agent', 
-        role: 'Assistant', 
-        model: 'gpt-4o', 
+      data: {
+        label: 'New Agent',
+        role: 'Assistant',
+        model: 'gpt-4o',
         system_instructions: 'You are a helpful assistant.',
         tools: []
       },
-      style: { 
-        border: '1px solid #777', 
-        padding: '10px', 
+      style: {
+        border: '1px solid #777',
+        padding: '10px',
         borderRadius: '5px',
         width: 180,
         textAlign: 'center',
@@ -147,7 +146,7 @@ export function WorkflowEditor({ workflowId }: WorkflowEditorProps) {
       }
     };
     setNodes((nds) => [...nds, newNode]);
-    
+
     // Auto open edit
     setSelectedNodeId(newNodeId);
     setEditForm({ ...newNode.data, name: newNode.data.label });
@@ -168,19 +167,11 @@ export function WorkflowEditor({ workflowId }: WorkflowEditorProps) {
         from_agent_id: edge.source,
         to_agent_id: edge.target
     }));
-    
-    // Find start node(s) - nodes with no incoming edges? 
-    // In our schema, start node connection has from_agent_id = NULL.
-    // For now, let's assume the first node created (or top-most) is start 
-    // AND add a explicit start connection for it IF it has no incoming edges.
-    // Actually, the simpler way for MVP:
-    // Any node that is a target of an edge is "connected".
-    // Any node that is NOT a target of any edge is a "root".
-    // We should create a NULL->Root connection for the first root found.
-    
+
+    // Find start node(s) - nodes with no incoming edges
     const targets = new Set(edges.map(e => e.target));
     const roots = nodes.filter(n => !targets.has(n.id));
-    
+
     if (roots.length > 0) {
         // Use the first root as entry point
         connections.push({
@@ -189,11 +180,17 @@ export function WorkflowEditor({ workflowId }: WorkflowEditorProps) {
         });
     }
 
-    saveMutation.mutate({
-        workflowId,
-        agents,
-        connections
-    });
+    saveMutation.mutate(
+      { agents, connections },
+      {
+        onSuccess: () => {
+          alert("Workflow Saved!");
+        },
+        onError: (err: Error) => {
+          alert(`Error saving: ${err.message}`);
+        }
+      }
+    );
   };
 
   const updateSelectedNode = () => {
@@ -235,8 +232,8 @@ export function WorkflowEditor({ workflowId }: WorkflowEditorProps) {
              </Button>
           </div>
           <div>
-             <Button size="sm" onClick={handleSaveGraph} disabled={saveMutation.isLoading}>
-                {saveMutation.isLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+             <Button size="sm" onClick={handleSaveGraph} disabled={saveMutation.isPending}>
+                {saveMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
                 Save Changes
              </Button>
           </div>
@@ -265,19 +262,19 @@ export function WorkflowEditor({ workflowId }: WorkflowEditorProps) {
                <SheetTitle>Edit Agent</SheetTitle>
                <SheetDescription>Configure the agent&apos;s behavior and tools.</SheetDescription>
              </SheetHeader>
-             
+
              <div className="grid gap-4 py-4">
                 <div className="space-y-2">
                    <Label>Name</Label>
-                   <Input 
-                     value={editForm.name} 
+                   <Input
+                     value={editForm.name}
                      onChange={e => setEditForm(prev => ({ ...prev, name: e.target.value }))}
                    />
                 </div>
-                
+
                 <div className="space-y-2">
                    <Label>Role</Label>
-                   <Input 
+                   <Input
                      value={editForm.role}
                      onChange={e => setEditForm(prev => ({ ...prev, role: e.target.value }))}
                    />
@@ -285,8 +282,8 @@ export function WorkflowEditor({ workflowId }: WorkflowEditorProps) {
 
                 <div className="space-y-2">
                    <Label>Model</Label>
-                   <Select 
-                     value={editForm.model} 
+                   <Select
+                     value={editForm.model}
                      onValueChange={val => setEditForm(prev => ({ ...prev, model: val }))}
                    >
                      <SelectTrigger><SelectValue /></SelectTrigger>
@@ -300,13 +297,13 @@ export function WorkflowEditor({ workflowId }: WorkflowEditorProps) {
 
                 <div className="space-y-2">
                    <Label>System Instructions</Label>
-                   <Textarea 
+                   <Textarea
                      className="min-h-[200px] font-mono text-sm"
                      value={editForm.system_instructions}
                      onChange={e => setEditForm(prev => ({ ...prev, system_instructions: e.target.value }))}
                    />
                 </div>
-                
+
                 <div className="pt-4 flex justify-between">
                    <Button variant="destructive" size="sm" onClick={deleteSelectedNode}>Delete</Button>
                    <Button onClick={updateSelectedNode}>Apply</Button>

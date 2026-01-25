@@ -72,7 +72,31 @@
       "Bash(docker buildx:*)",
       "Bash(gh run list:*)",
       "Bash(git pull:*)",
-      "Bash(gh run watch:*)"
+      "Bash(gh run watch:*)",
+      "Bash(gh workflow run:*)",
+      "Bash(gh run view:*)",
+      "WebFetch(domain:github.com)",
+      "Bash(node --version:*)",
+      "Bash(gcloud --version:*)",
+      "Bash(brew install:*)",
+      "Bash(/opt/homebrew/share/google-cloud-sdk/bin/gcloud auth list)",
+      "Bash(gcloud auth:*)",
+      "Bash(/opt/homebrew/share/google-cloud-sdk/bin/gcloud auth login:*)",
+      "Bash(/opt/homebrew/share/google-cloud-sdk/bin/gcloud projects list:*)",
+      "Bash(/opt/homebrew/share/google-cloud-sdk/bin/gcloud config set:*)",
+      "Bash(/opt/homebrew/share/google-cloud-sdk/bin/gcloud alpha iap oauth-clients list)",
+      "Bash(/opt/homebrew/share/google-cloud-sdk/bin/gcloud auth application-default print-access-token:*)",
+      "Bash(/opt/homebrew/share/google-cloud-sdk/bin/gcloud auth print-access-token:*)",
+      "Bash(echo:*)",
+      "Bash(/opt/homebrew/share/google-cloud-sdk/bin/gcloud services list:*)",
+      "mcp__supabase__list_tables",
+      "Bash(open \"https://console.cloud.google.com/apis/credentials/oauthclient/244076329006-kaiiobfuvpcvvtt6tchr5681i8jecc29.apps.googleusercontent.com?project=ai-video-automation-481909\")",
+      "mcp__supabase__get_project_url",
+      "mcp__supabase__get_publishable_keys",
+      "Bash(pnpm add:*)",
+      "Bash(tree:*)",
+      "Bash(pnpm install)",
+      "Bash(pnpm build:*)"
     ]
   }
 }

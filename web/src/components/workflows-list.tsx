@@ -1,7 +1,6 @@
 'use client';
 
 import Link from 'next/link';
-import { trpc } from '@/lib/trpc';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -18,12 +17,15 @@ import {
 } from "@/components/ui/dialog"
 import { Loader2, Play, AlertCircle, Plus, Trash2 } from 'lucide-react';
 import { useState, useTransition } from 'react';
-import { deleteWorkflow } from '@/app/actions/workflow';
 import { useAuth } from '@/lib/auth-context';
+import { useWorkflows, useCreateWorkflow, useDeleteWorkflow } from '@/hooks/use-workflows';
 
 export function WorkflowsList({ userId }: { userId?: string }) {
-  const { data: workflows, isLoading, error, refetch } = trpc.workflow.list.useQuery(userId ? { userId } : undefined);
+  const { data: workflows, isLoading, error } = useWorkflows(userId);
+  const createWorkflow = useCreateWorkflow();
+  const deleteWorkflow = useDeleteWorkflow();
   const { session } = useAuth();
+
   const [runningId, setRunningId] = useState<string | null>(null);
   const [openDialogId, setOpenDialogId] = useState<string | null>(null);
   const [inputTopic, setInputTopic] = useState("");
@@ -46,36 +48,20 @@ export function WorkflowsList({ userId }: { userId?: string }) {
       return;
     }
 
-    startTransition(async () => {
-      try {
-        const response = await fetch('/api/workflows', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({
-            name: newWorkflowName,
-            description: newWorkflowDescription || undefined,
-          }),
-        });
+    try {
+      await createWorkflow.mutateAsync({
+        name: newWorkflowName,
+        description: newWorkflowDescription || undefined,
+      });
 
-        if (!response.ok) {
-          const error = await response.json();
-          alert(`Error: ${error.error || 'Failed to create workflow'}`);
-          return;
-        }
-
-        setCreateDialogOpen(false);
-        setNewWorkflowName("");
-        setNewWorkflowDescription("");
-        await refetch();
-        alert('Workflow created successfully!');
-      } catch (error) {
-        console.error('Create workflow error:', error);
-        alert(`Error: ${error instanceof Error ? error.message : 'Failed to create workflow'}`);
-      }
-    });
+      setCreateDialogOpen(false);
+      setNewWorkflowName("");
+      setNewWorkflowDescription("");
+      alert('Workflow created successfully!');
+    } catch (error) {
+      console.error('Create workflow error:', error);
+      alert(`Error: ${error instanceof Error ? error.message : 'Failed to create workflow'}`);
+    }
   };
 
   const handleDeleteWorkflow = async (id: string) => {
@@ -84,24 +70,16 @@ export function WorkflowsList({ userId }: { userId?: string }) {
     }
 
     setDeletingId(id);
-    startTransition(async () => {
-      const result = await deleteWorkflow(id);
-
-      if (result.success) {
-        await refetch();
-      } else {
-        alert(`Error: ${result.error}`);
-      }
+    try {
+      await deleteWorkflow.mutateAsync(id);
+    } catch (error) {
+      alert(`Error: ${error instanceof Error ? error.message : 'Failed to delete workflow'}`);
+    } finally {
       setDeletingId(null);
-    });
+    }
   };
 
   const handleRunWorkflow = async (id: string, wfUserId: string) => {
-    console.log('Run workflow - Full session object:', JSON.stringify(session, null, 2));
-    console.log('Run workflow - access_token:', session?.access_token);
-    console.log('Run workflow - Has session?', !!session);
-    console.log('Run workflow - Session keys:', session ? Object.keys(session) : 'null');
-
     if (!session?.access_token) {
       console.error('No access token - session:', session);
       alert(`Not authenticated. Session: ${session ? 'exists but no token' : 'null'}`);
@@ -109,11 +87,10 @@ export function WorkflowsList({ userId }: { userId?: string }) {
     }
 
     setRunningId(id);
-    setOpenDialogId(null); // Close dialog
+    setOpenDialogId(null);
 
     startTransition(async () => {
       try {
-        // Call backend API directly with token
         const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/run`, {
           method: 'POST',
           headers: {
@@ -141,7 +118,7 @@ export function WorkflowsList({ userId }: { userId?: string }) {
         alert('Failed to start workflow');
       } finally {
         setRunningId(null);
-        setInputTopic(""); // Reset input
+        setInputTopic("");
       }
     });
   };
@@ -163,57 +140,61 @@ export function WorkflowsList({ userId }: { userId?: string }) {
     );
   }
 
+  const CreateWorkflowDialog = () => (
+    <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+      <DialogTrigger asChild>
+        <Button>
+          <Plus className="mr-2 h-4 w-4" /> Create Workflow
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Create New Workflow</DialogTitle>
+          <DialogDescription>
+            Create a new workflow to automate your video content generation.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 mt-4">
+          <div>
+            <Label htmlFor="workflow_name">Workflow Name *</Label>
+            <Input
+              id="workflow_name"
+              type="text"
+              placeholder="My Workflow"
+              value={newWorkflowName}
+              onChange={(e) => setNewWorkflowName(e.target.value)}
+              className="mt-1"
+            />
+          </div>
+          <div>
+            <Label htmlFor="workflow_description">Description</Label>
+            <Input
+              id="workflow_description"
+              type="text"
+              placeholder="What does this workflow do?"
+              value={newWorkflowDescription}
+              onChange={(e) => setNewWorkflowDescription(e.target.value)}
+              className="mt-1"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button
+            onClick={handleCreateWorkflow}
+            disabled={createWorkflow.isPending || !newWorkflowName.trim()}
+          >
+            {createWorkflow.isPending ? 'Creating...' : 'Create Workflow'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+
   if (!workflows || workflows.length === 0) {
     return (
       <div className="space-y-4">
         <div className="flex justify-end">
-          <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="mr-2 h-4 w-4" /> Create Workflow
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Create New Workflow</DialogTitle>
-                <DialogDescription>
-                  Create a new workflow to automate your video content generation.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 mt-4">
-                <div>
-                  <Label htmlFor="workflow_name">Workflow Name *</Label>
-                  <Input
-                    id="workflow_name"
-                    type="text"
-                    placeholder="My Workflow"
-                    value={newWorkflowName}
-                    onChange={(e) => setNewWorkflowName(e.target.value)}
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="workflow_description">Description</Label>
-                  <Input
-                    id="workflow_description"
-                    type="text"
-                    placeholder="What does this workflow do?"
-                    value={newWorkflowDescription}
-                    onChange={(e) => setNewWorkflowDescription(e.target.value)}
-                    className="mt-1"
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button
-                  onClick={handleCreateWorkflow}
-                  disabled={isPending || !newWorkflowName.trim()}
-                >
-                  {isPending ? 'Creating...' : 'Create Workflow'}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          <CreateWorkflowDialog />
         </div>
         <div className="text-center p-8 border rounded-lg border-dashed">
           <h3 className="text-lg font-medium">No Workflows Found</h3>
@@ -229,53 +210,7 @@ export function WorkflowsList({ userId }: { userId?: string }) {
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" /> Create Workflow
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Create New Workflow</DialogTitle>
-              <DialogDescription>
-                Create a new workflow to automate your video content generation.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 mt-4">
-              <div>
-                <Label htmlFor="workflow_name">Workflow Name *</Label>
-                <Input
-                  id="workflow_name"
-                  type="text"
-                  placeholder="My Workflow"
-                  value={newWorkflowName}
-                  onChange={(e) => setNewWorkflowName(e.target.value)}
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <Label htmlFor="workflow_description">Description</Label>
-                <Input
-                  id="workflow_description"
-                  type="text"
-                  placeholder="What does this workflow do?"
-                  value={newWorkflowDescription}
-                  onChange={(e) => setNewWorkflowDescription(e.target.value)}
-                  className="mt-1"
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button
-                onClick={handleCreateWorkflow}
-                disabled={isPending || !newWorkflowName.trim()}
-              >
-                {isPending ? 'Creating...' : 'Create Workflow'}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <CreateWorkflowDialog />
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">

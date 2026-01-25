@@ -12,8 +12,8 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
-import { runWorkflowStream, StreamEvent } from '@/lib/api-stream'; // Helper we will create
-import { trpc } from '@/lib/trpc';
+import { runWorkflowStream, StreamEvent } from '@/lib/api-stream';
+import { useWorkflow } from '@/hooks/use-workflows';
 import { useAuth } from '@/lib/auth-context';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
@@ -41,9 +41,7 @@ export function WorkflowVisualizer({ workflowId, userId }: WorkflowVisualizerPro
   const [inputTopic, setInputTopic] = useState("");
 
   // Data Fetching
-  const q = trpc.workflow.get.useQuery({ id: workflowId }, {
-    refetchOnWindowFocus: false
-  });
+  const { data, isLoading } = useWorkflow(workflowId);
 
   // Log auto-scroll
   const logEndRef = useRef<HTMLDivElement>(null);
@@ -53,19 +51,17 @@ export function WorkflowVisualizer({ workflowId, userId }: WorkflowVisualizerPro
 
   // Build Graph on Load
   useEffect(() => {
-    if (q.data) {
-      const { agents, workflow_connections } = q.data;
-      
-      // Simple layout: position them linearly for now (or basic grid)
-      // A real app would use dagre for auto-layout.
-      const newNodes: Node[] = agents.map((agent: { id: string; name: string }, index: number) => ({
+    if (data) {
+      const { agents, workflow_connections } = data;
+
+      const newNodes: Node[] = agents.map((agent, index) => ({
         id: agent.id,
         position: { x: 250, y: index * 150 + 50 },
         data: { label: agent.name },
-        type: 'default', // Using default for now
-        style: { 
-          border: '1px solid #777', 
-          padding: '10px', 
+        type: 'default',
+        style: {
+          border: '1px solid #777',
+          padding: '10px',
           borderRadius: '5px',
           width: 150,
           textAlign: 'center',
@@ -74,33 +70,35 @@ export function WorkflowVisualizer({ workflowId, userId }: WorkflowVisualizerPro
         }
       }));
 
-      const newEdges: Edge[] = workflow_connections.map((conn: { id: string; from_agent_id: string; to_agent_id: string }) => ({
-        id: conn.id,
-        source: conn.from_agent_id,
-        target: conn.to_agent_id,
-        markerEnd: { type: MarkerType.ArrowClosed },
-        animated: false,
-        style: { stroke: '#555' }
-      })).filter((e: Edge) => e.source && e.target); // Filter start nodes
+      const newEdges: Edge[] = workflow_connections
+        .filter((conn) => conn.from_agent_id && conn.to_agent_id)
+        .map((conn) => ({
+          id: conn.id,
+          source: conn.from_agent_id!,
+          target: conn.to_agent_id,
+          markerEnd: { type: MarkerType.ArrowClosed },
+          animated: false,
+          style: { stroke: '#555' }
+        }));
 
       setNodes(newNodes);
       setEdges(newEdges);
     }
-  }, [q.data, setNodes, setEdges]);
+  }, [data, setNodes, setEdges]);
 
   // Update Node Styles based on Active State
   useEffect(() => {
-    setNodes((nds) => 
+    setNodes((nds) =>
       nds.map((node) => {
         const isActive = node.id === activeNodeId;
         const isCompleted = completedNodes.has(node.id);
-        
+
         const style = { ...node.style };
         if (isActive) {
-          style.border = '2px solid #22c55e'; // Green
+          style.border = '2px solid #22c55e';
           style.boxShadow = '0 0 10px #22c55e';
         } else if (isCompleted) {
-          style.border = '2px solid #3b82f6'; // Blue
+          style.border = '2px solid #3b82f6';
           style.boxShadow = 'none';
         } else {
           style.border = '1px solid #777';
@@ -113,8 +111,7 @@ export function WorkflowVisualizer({ workflowId, userId }: WorkflowVisualizerPro
         };
       })
     );
-    
-    // Animate edges connected to active node?
+
     setEdges((eds) =>
       eds.map((edge) => ({
         ...edge,
@@ -143,7 +140,6 @@ export function WorkflowVisualizer({ workflowId, userId }: WorkflowVisualizerPro
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
       const streamUrl = `${apiUrl}/api/run/stream`;
 
-      // Stream with client-side access token
       await runWorkflowStream({
         workflow_id: workflowId,
         user_id: userId,
@@ -173,7 +169,7 @@ export function WorkflowVisualizer({ workflowId, userId }: WorkflowVisualizerPro
     }
   };
 
-  if (q.isLoading) return <div className="p-8 flex justify-center"><Loader2 className="animate-spin" /></div>;
+  if (isLoading) return <div className="p-8 flex justify-center"><Loader2 className="animate-spin" /></div>;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-150px)]">
@@ -207,8 +203,8 @@ export function WorkflowVisualizer({ workflowId, userId }: WorkflowVisualizerPro
              <Play className="w-4 h-4" /> Controls
            </h3>
            <div className="flex gap-2">
-             <Input 
-               placeholder="Enter topic..." 
+             <Input
+               placeholder="Enter topic..."
                value={inputTopic}
                onChange={e => setInputTopic(e.target.value)}
                disabled={isRunning}
