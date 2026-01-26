@@ -101,65 +101,77 @@ class DynamicWorkflowRunner:
         logger.debug(f"Instantiated Agent: {name} ({model})")
 
 
-    async def run_stream(self, initial_input: str):
-        """Execute the workflow yielding events."""
+    async def run_stream(self, initial_input: str, dry_run: bool = False):
+        """Execute the workflow yielding events.
+
+        Args:
+            initial_input: The input text to process
+            dry_run: If True, simulate execution without calling AI models
+        """
         if not self.agent_map:
             await self.build_graph()
 
         runner = Runner()
-        
+
         # Determine start agent
         current_agent_id = self.start_agent_id
         if not current_agent_id or current_agent_id not in self.agent_map:
             yield {"type": "error", "content": "Could not determine valid start agent."}
             return
-            
+
         current_input = initial_input
         history: List[Dict[str, Any]] = []
+
+        if dry_run:
+            logger.info(f"Starting DRY RUN for workflow {self.workflow_id}")
 
         # Execution Loop
         while current_agent_id:
             agent = self.agent_map[current_agent_id]
-            logger.info(f"Running Agent: {agent.name}")
-            
+            logger.info(f"{'[DRY RUN] ' if dry_run else ''}Running Agent: {agent.name}")
+
             # Emit Node Active Event
             yield {
-                "type": "node_active", 
-                "node_id": current_agent_id, 
-                "agent_name": agent.name
+                "type": "node_active",
+                "node_id": current_agent_id,
+                "agent_name": agent.name,
+                "dry_run": dry_run
             }
-            
+
             try:
-                # Run the agent
-                # Note: If agent.run supported streaming, we would yield tokens here.
-                # For now, we simulate thought streaming or just wait.
-                result = await runner.run(agent, current_input)
-                
-                output_text = result.final_output
-                if not isinstance(output_text, str):
-                    output_text = str(output_text)
+                if dry_run:
+                    # Simulate processing delay for visual feedback
+                    await asyncio.sleep(0.8)
+                    output_text = f"[DRY RUN] Agent '{agent.name}' would process input: \"{current_input[:100]}{'...' if len(current_input) > 100 else ''}\""
+                else:
+                    # Run the actual agent
+                    result = await runner.run(agent, current_input)
+                    output_text = result.final_output
+                    if not isinstance(output_text, str):
+                        output_text = str(output_text)
 
                 history.append({
                     "agent": agent.name,
                     "output": output_text
                 })
-                
+
                 # Emit Node Complete Event
                 yield {
-                    "type": "node_complete", 
-                    "node_id": current_agent_id, 
-                    "output": output_text
+                    "type": "node_complete",
+                    "node_id": current_agent_id,
+                    "output": output_text,
+                    "dry_run": dry_run
                 }
-                
+
                 current_input = output_text
                 current_agent_id = self.connection_map.get(current_agent_id)
-                
+
             except Exception as e:
                 logger.error(f"Execution failed at agent {agent.name}: {e}")
                 yield {"type": "error", "content": str(e)}
                 raise # Re-raise to stop connection
 
-        yield {"type": "workflow_complete", "final_output": current_input}
+        yield {"type": "workflow_complete", "final_output": current_input, "dry_run": dry_run}
 
     # Backward compatibility wrapper
     async def run(self, initial_input: str) -> Dict[str, Any]:

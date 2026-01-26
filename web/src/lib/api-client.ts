@@ -58,6 +58,44 @@ export interface CreateWorkflowInput {
   description?: string;
 }
 
+export interface UpdateWorkflowInput {
+  name?: string;
+  description?: string;
+  is_active?: boolean;
+}
+
+interface UpdateWorkflowResponse {
+  status: string;
+  message: string;
+  workflow: Workflow;
+}
+
+interface CronJob {
+  job_id: string;
+  name: string;
+  workflow_id: string;
+  user_id: string;
+  input_text: string;
+  schedule_type: 'cron' | 'interval';
+  schedule: string;
+  next_run_time: string | null;
+  paused: boolean;
+  trigger: string;
+  is_main_pipeline: boolean;
+}
+
+export type { CronJob };
+
+interface ListCronJobsResponse {
+  status: string;
+  jobs: CronJob[];
+}
+
+interface CreateCronJobResponse {
+  status: string;
+  job: CronJob;
+}
+
 export interface SaveGraphInput {
   workflowId: string;
   agents: Array<{
@@ -138,6 +176,40 @@ export const workflowApi = {
         agents: data.agents,
         connections: data.connections,
       }),
+    });
+    return { success: true };
+  },
+
+  update: async (id: string, data: UpdateWorkflowInput, token: string): Promise<Workflow> => {
+    const response = await fetchWithAuth<UpdateWorkflowResponse>(`/api/workflows/${id}`, token, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    return response.workflow;
+  },
+};
+
+// Cron Jobs API
+export const cronApi = {
+  list: async (token: string): Promise<CronJob[]> => {
+    const response = await fetchWithAuth<ListCronJobsResponse>('/api/cron/jobs', token);
+    return response.jobs;
+  },
+
+  create: async (cronExpression: string, input: Record<string, unknown>, token: string): Promise<CronJob> => {
+    const response = await fetchWithAuth<CreateCronJobResponse>('/api/cron/jobs/cron', token, {
+      method: 'POST',
+      body: JSON.stringify({
+        cron_expression: cronExpression,
+        input,
+      }),
+    });
+    return response.job;
+  },
+
+  delete: async (jobId: string, token: string): Promise<{ success: boolean }> => {
+    await fetchWithAuth(`/api/cron/jobs/${jobId}`, token, {
+      method: 'DELETE',
     });
     return { success: true };
   },

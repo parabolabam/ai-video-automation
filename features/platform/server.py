@@ -105,6 +105,7 @@ class WorkflowExecutionRequest(BaseModel):
     workflow_id: str
     user_id: str
     input: str
+    dry_run: bool = False
 
 class CronJobCreateRequest(BaseModel):
     job_id: str
@@ -112,6 +113,10 @@ class CronJobCreateRequest(BaseModel):
     user_id: str
     input: str
     cron_expression: str
+
+class SimpleCronJobCreateRequest(BaseModel):
+    cron_expression: str
+    input: Dict[str, Any]  # Contains workflow_id and any other data
 
 class IntervalJobCreateRequest(BaseModel):
     job_id: str
@@ -125,6 +130,12 @@ class IntervalJobCreateRequest(BaseModel):
 class WorkflowCreateRequest(BaseModel):
     name: str
     description: Optional[str] = None
+    definition: Optional[Dict[str, Any]] = None
+
+class WorkflowUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
     definition: Optional[Dict[str, Any]] = None
 
 from fastapi.responses import StreamingResponse
@@ -141,13 +152,13 @@ async def run_workflow_stream(
     request: WorkflowExecutionRequest,
     current_user: dict = Depends(get_current_user)
 ):
-    logger.info(f"Received STREAM execution request: workflow={request.workflow_id}, user={current_user['email']}")
+    logger.info(f"Received STREAM execution request: workflow={request.workflow_id}, user={current_user['email']}, dry_run={request.dry_run}")
     verify_user_access(request.user_id, current_user)
 
     async def event_generator():
         try:
             runner = DynamicWorkflowRunner(request.workflow_id, request.user_id)
-            async for event in runner.run_stream(request.input):
+            async for event in runner.run_stream(request.input, dry_run=request.dry_run):
                 yield json.dumps(event) + "\n"
         except Exception as e:
             logger.error(f"Stream Error: {e}")
@@ -160,13 +171,13 @@ async def run_workflow_stream_sse(
     request: WorkflowExecutionRequest,
     current_user: dict = Depends(get_current_user)
 ):
-    logger.info(f"Received SSE stream request: workflow={request.workflow_id}, user={current_user['email']}")
+    logger.info(f"Received SSE stream request: workflow={request.workflow_id}, user={current_user['email']}, dry_run={request.dry_run}")
     verify_user_access(request.user_id, current_user)
 
     async def event_generator():
         try:
             runner = DynamicWorkflowRunner(request.workflow_id, request.user_id)
-            async for event in runner.run_stream(request.input):
+            async for event in runner.run_stream(request.input, dry_run=request.dry_run):
                 yield f"data: {json.dumps(event)}\n\n"
         except Exception as e:
             logger.error(f"SSE Stream Error: {e}")
@@ -216,7 +227,45 @@ async def get_cron_job(job_id: str, current_user: dict = Depends(get_current_use
     return {"status": "success", "job": job}
 
 @app.post("/api/cron/jobs/cron")
-async def create_cron_job(request: CronJobCreateRequest, current_user: dict = Depends(get_current_user)) -> Dict[str, Any]:
+async def create_cron_job(request: SimpleCronJobCreateRequest, current_user: dict = Depends(get_current_user)) -> Dict[str, Any]:
+    """Create a cron job with auto-generated job_id. Input should contain workflow_id."""
+    scheduler = get_scheduler()
+    try:
+        import uuid
+        workflow_id = request.input.get("workflow_id")
+        if not workflow_id:
+            raise HTTPException(status_code=400, detail="workflow_id is required in input")
+
+        # Verify user owns this workflow
+        if supabase:
+            workflow = supabase.table("workflows").select("user_id").eq("id", workflow_id).execute()
+            if not workflow.data or workflow.data[0]["user_id"] != current_user["id"]:
+                raise HTTPException(status_code=403, detail="Not authorized to schedule this workflow")
+
+        job_id = f"cron-{workflow_id}-{uuid.uuid4().hex[:8]}"
+        input_text = json.dumps(request.input) if isinstance(request.input, dict) else str(request.input)
+
+        job = scheduler.add_cron_job(
+            job_id=job_id,
+            workflow_id=workflow_id,
+            user_id=current_user["id"],
+            input_text=input_text,
+            cron_expression=request.cron_expression,
+            replace_existing=True
+        )
+        job_dict = scheduler._job_to_dict(job)
+        # Include input in response for frontend
+        job_dict["input"] = request.input
+        return {"status": "success", "message": f"Cron job {job_id} created successfully", "job": job_dict}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to create cron job: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/api/cron/jobs/cron/legacy")
+async def create_cron_job_legacy(request: CronJobCreateRequest, current_user: dict = Depends(get_current_user)) -> Dict[str, Any]:
+    """Legacy endpoint with explicit job_id and user_id."""
     verify_user_access(request.user_id, current_user)
     scheduler = get_scheduler()
     try:
@@ -349,7 +398,7 @@ async def get_workflow(workflow_id: str, current_user: dict = Depends(get_curren
         raise HTTPException(status_code=500, detail=f"Failed to get workflow: {str(e)}")
 
 @app.put("/api/workflows/{workflow_id}")
-async def update_workflow(workflow_id: str, request: WorkflowCreateRequest, current_user: dict = Depends(get_current_user)) -> Dict[str, Any]:
+async def update_workflow(workflow_id: str, request: WorkflowUpdateRequest, current_user: dict = Depends(get_current_user)) -> Dict[str, Any]:
     if not supabase:
         raise HTTPException(status_code=500, detail="Database not available")
     try:
@@ -358,9 +407,17 @@ async def update_workflow(workflow_id: str, request: WorkflowCreateRequest, curr
             raise HTTPException(status_code=404, detail=f"Workflow {workflow_id} not found")
         if existing.data[0]["user_id"] != current_user["id"]:
             raise HTTPException(status_code=403, detail="You don't have permission to update this workflow")
-        update_data = {"name": request.name, "description": request.description}
+        update_data = {}
+        if request.name is not None:
+            update_data["name"] = request.name
+        if request.description is not None:
+            update_data["description"] = request.description
+        if request.is_active is not None:
+            update_data["active"] = request.is_active
         if request.definition is not None:
             update_data["definition"] = request.definition
+        if not update_data:
+            return {"status": "success", "message": "No changes", "workflow": existing.data[0]}
         result = supabase.table("workflows").update(update_data).eq("id", workflow_id).execute()
         return {"status": "success", "message": "Workflow updated successfully", "workflow": result.data[0] if result.data else None}
     except HTTPException:

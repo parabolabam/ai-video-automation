@@ -2,9 +2,9 @@
 
 import { WorkflowsList } from '@/components/workflows-list';
 import { ProtectedRoute } from '@/components/auth/protected-route';
-import { LoginButton } from '@/components/auth/login-button';
 import { TokenDisplay } from '@/components/auth/token-display';
 import { CronJobsDashboard } from '@/components/cron-jobs-dashboard';
+import { AppShell } from '@/components/layout';
 import { useAuth } from '@/lib/auth-context';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
@@ -24,25 +24,24 @@ export default function UserDashboard() {
 
   return (
     <ProtectedRoute>
-      <div className="min-h-screen p-8 font-[family-name:var(--font-geist-sans)]">
-        <main className="max-w-6xl mx-auto space-y-8">
-          <div className="flex justify-between items-center">
+      <AppShell homeHref={`/user/${userId}`}>
+        <div className="p-8 font-[family-name:var(--font-geist-sans)]">
+          <main className="max-w-6xl mx-auto space-y-8">
             <div>
               <h1 className="text-3xl font-bold tracking-tight">Agent Workflows</h1>
               <p className="text-muted-foreground mt-2">
-                User ID: <code className="bg-muted px-1 py-0.5 rounded">{userId}</code>
+                Manage your AI agent workflows and automations
               </p>
             </div>
-            <LoginButton />
-          </div>
 
-          <TokenDisplay />
+            <TokenDisplay />
 
-          <CronJobsDashboard />
+            <CronJobsDashboard />
 
-          <WorkflowsList userId={userId} />
-        </main>
-      </div>
+            <WorkflowsList userId={userId} />
+          </main>
+        </div>
+      </AppShell>
     </ProtectedRoute>
   );
 }

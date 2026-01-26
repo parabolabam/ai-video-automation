@@ -1,8 +1,10 @@
 'use client';
 
-import { WorkflowVisualizer } from '@/components/workflow-visualizer';
+import { UnifiedWorkflowEditor } from '@/components/unified-workflow-editor';
 import { ProtectedRoute } from '@/components/auth/protected-route';
+import { AppShell } from '@/components/layout';
 import { useAuth } from '@/lib/auth-context';
+import { useWorkflow } from '@/hooks/use-workflows';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 
@@ -12,6 +14,7 @@ export default function WorkflowPage() {
   const { user } = useAuth();
   const userId = params.userId as string;
   const workflowId = params.workflowId as string;
+  const { data: workflow } = useWorkflow(workflowId);
 
   useEffect(() => {
     // If authenticated but trying to access another user's workflow, redirect
@@ -20,22 +23,19 @@ export default function WorkflowPage() {
     }
   }, [user, userId, router]);
 
+  const breadcrumbs = [
+    { label: workflow?.name || 'Workflow', isCurrentPage: true },
+  ];
+
   return (
     <ProtectedRoute>
-      <div className="h-screen flex flex-col p-4 font-[family-name:var(--font-geist-sans)]">
-        <div className="mb-4">
-          <h1 className="text-2xl font-bold">Workflow Visualizer</h1>
-          <div className="flex gap-2 text-sm text-muted-foreground">
-            <span>User: {userId.slice(0,8)}</span>
-            <span>•</span>
-            <span>Flow: {workflowId.slice(0,8)}</span>
-          </div>
-        </div>
-
-        <div className="flex-1">
-          <WorkflowVisualizer userId={userId} workflowId={workflowId} />
-        </div>
-      </div>
+      <AppShell
+        breadcrumbs={breadcrumbs}
+        homeHref={`/user/${userId}`}
+        fullHeight
+      >
+        <UnifiedWorkflowEditor workflowId={workflowId} userId={userId} />
+      </AppShell>
     </ProtectedRoute>
   );
 }

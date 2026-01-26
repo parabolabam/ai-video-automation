@@ -22,7 +22,9 @@ interface AgentConfigDialogProps {
   open: boolean;
   onClose: () => void;
   onSave: (config: AgentConfig) => void;
+  onDelete?: () => void;
   initialConfig?: AgentConfig;
+  isEditing?: boolean;
 }
 
 const AVAILABLE_MODELS = [
@@ -40,7 +42,8 @@ const AVAILABLE_TOOLS = [
   'file_reader',
 ];
 
-export function AgentConfigDialog({ open, onClose, onSave, initialConfig }: AgentConfigDialogProps) {
+export function AgentConfigDialog({ open, onClose, onSave, onDelete, initialConfig, isEditing = false }: AgentConfigDialogProps) {
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [config, setConfig] = useState<AgentConfig>(() =>
     initialConfig || {
       label: '',
@@ -168,11 +171,46 @@ export function AgentConfigDialog({ open, onClose, onSave, initialConfig }: Agen
           </div>
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button onClick={handleSave}>Save Agent</Button>
+        <DialogFooter className="flex-col sm:flex-row gap-2">
+          <div className="flex-1">
+            {isEditing && onDelete && !showDeleteConfirm && (
+              <Button
+                variant="destructive"
+                onClick={() => setShowDeleteConfirm(true)}
+              >
+                Delete Agent
+              </Button>
+            )}
+            {isEditing && onDelete && showDeleteConfirm && (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-destructive">Confirm delete?</span>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => {
+                    onDelete();
+                    setShowDeleteConfirm(false);
+                    onClose();
+                  }}
+                >
+                  Yes
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowDeleteConfirm(false)}
+                >
+                  No
+                </Button>
+              </div>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button onClick={handleSave}>Save Agent</Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

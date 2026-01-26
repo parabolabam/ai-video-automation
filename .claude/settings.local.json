@@ -96,7 +96,14 @@
       "Bash(pnpm add:*)",
       "Bash(tree:*)",
       "Bash(pnpm install)",
-      "Bash(pnpm build:*)"
+      "Bash(pnpm build:*)",
+      "Bash(pnpm dlx:*)",
+      "Bash(/opt/homebrew/bin/pnpm dlx shadcn@latest add switch tooltip -y)",
+      "Bash(/opt/homebrew/bin/pnpm dlx:*)",
+      "Bash(/opt/homebrew/bin/pnpm tsc:*)",
+      "Bash(/opt/homebrew/bin/pnpm build)",
+      "Bash(pnpm exec tsc:*)",
+      "Bash(/usr/local/bin/pnpm exec tsc:*)"
     ]
   }
 }

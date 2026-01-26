@@ -4,32 +4,32 @@ import { useAuth } from '@/lib/auth-context';
 import { ConnectAccounts } from '@/components/ConnectAccounts';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import Link from 'next/link';
+import { AppShell } from '@/components/layout';
 
 export default function SettingsPage() {
   const { user, loading, signInWithGoogle, signOut } = useAuth();
 
+  const breadcrumbs = [{ label: 'Settings', isCurrentPage: true }];
+  const homeHref = user ? `/user/${user.id}` : '/';
+
   if (loading) {
     return (
-      <div className="container mx-auto py-8 px-4">
-        <div className="flex items-center justify-center py-16">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
+      <AppShell breadcrumbs={breadcrumbs} homeHref={homeHref}>
+        <div className="container mx-auto py-8 px-4">
+          <div className="flex items-center justify-center py-16">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
+          </div>
         </div>
-      </div>
+      </AppShell>
     );
   }
 
   return (
-    <div className="container mx-auto py-8 px-4 max-w-4xl">
-      <div className="mb-6">
-        <Link href="/" className="text-blue-600 hover:underline">
-          &larr; Back to Dashboard
-        </Link>
-      </div>
+    <AppShell breadcrumbs={breadcrumbs} homeHref={homeHref}>
+      <div className="container mx-auto py-8 px-4 max-w-4xl">
+        <h1 className="text-3xl font-bold mb-8">Settings</h1>
 
-      <h1 className="text-3xl font-bold mb-8">Settings</h1>
-
-      <div className="space-y-6">
+        <div className="space-y-6">
         {/* Account Section */}
         <Card>
           <CardHeader>
@@ -87,7 +87,8 @@ export default function SettingsPage() {
             </div>
           </CardContent>
         </Card>
+        </div>
       </div>
-    </div>
+    </AppShell>
   );
 }

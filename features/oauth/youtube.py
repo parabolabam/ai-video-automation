@@ -16,7 +16,7 @@ class YouTubeOAuth:
     @staticmethod
     def get_auth_url(redirect_uri: str, state: str) -> str:
         """Generate Google OAuth authorization URL."""
-        client_id = os.getenv("GOOGLE_CLIENT_ID")
+        client_id = os.getenv("GOOGLE_CLIENT_ID") or os.getenv("YOUTUBE_CLIENT_ID")
 
         from urllib.parse import urlencode
         params = {
@@ -34,8 +34,8 @@ class YouTubeOAuth:
     @staticmethod
     async def exchange_code(code: str, redirect_uri: str) -> Dict[str, Any]:
         """Exchange authorization code for tokens."""
-        client_id = os.getenv("GOOGLE_CLIENT_ID")
-        client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
+        client_id = os.getenv("GOOGLE_CLIENT_ID") or os.getenv("YOUTUBE_CLIENT_ID")
+        client_secret = os.getenv("GOOGLE_CLIENT_SECRET") or os.getenv("YOUTUBE_CLIENT_SECRET")
 
         async with httpx.AsyncClient() as client:
             resp = await client.post(
@@ -66,8 +66,8 @@ class YouTubeOAuth:
     @staticmethod
     async def refresh_token(refresh_token: str) -> Dict[str, Any]:
         """Refresh an expired access token."""
-        client_id = os.getenv("GOOGLE_CLIENT_ID")
-        client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
+        client_id = os.getenv("GOOGLE_CLIENT_ID") or os.getenv("YOUTUBE_CLIENT_ID")
+        client_secret = os.getenv("GOOGLE_CLIENT_SECRET") or os.getenv("YOUTUBE_CLIENT_SECRET")
 
         async with httpx.AsyncClient() as client:
             resp = await client.post(

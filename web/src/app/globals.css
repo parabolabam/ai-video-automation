@@ -115,6 +115,19 @@
   --sidebar-ring: oklch(0.556 0 0);
 }
 
+/* TUI (Terminal UI) Color Palette */
+:root {
+  --tui-bg: oklch(0.10 0 0);
+  --tui-fg: oklch(0.85 0 0);
+  --tui-border: oklch(0.30 0 0);
+  --tui-green: oklch(0.72 0.19 145);
+  --tui-cyan: oklch(0.75 0.15 200);
+  --tui-yellow: oklch(0.80 0.18 85);
+  --tui-red: oklch(0.65 0.25 25);
+  --tui-blue: oklch(0.65 0.20 250);
+  --tui-dim: oklch(0.50 0 0);
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -122,4 +135,48 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  /* TUI mode styles */
+  .tui {
+    --background: var(--tui-bg);
+    --foreground: var(--tui-fg);
+    --border: var(--tui-border);
+    --card: oklch(0.12 0 0);
+    --card-foreground: var(--tui-fg);
+    --muted: oklch(0.15 0 0);
+    --muted-foreground: var(--tui-dim);
+    --primary: var(--tui-cyan);
+    --primary-foreground: oklch(0.10 0 0);
+    --secondary: oklch(0.20 0 0);
+    --secondary-foreground: var(--tui-fg);
+    --accent: oklch(0.18 0 0);
+    --accent-foreground: var(--tui-fg);
+    --destructive: var(--tui-red);
+    --radius: 0;
+  }
+
+  .tui body,
+  body.tui {
+    @apply font-mono;
+    font-family: var(--font-geist-mono), ui-monospace, monospace;
+  }
+}
+
+/* TUI Animations */
+@keyframes tui-blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+@keyframes tui-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--tui-green); }
+  50% { box-shadow: 0 0 10px 2px var(--tui-green); }
+}
+
+.tui-blink {
+  animation: tui-blink 1s step-end infinite;
+}
+
+.tui-pulse {
+  animation: tui-pulse 2s ease-in-out infinite;
 }

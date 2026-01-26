@@ -1,7 +1,7 @@
 export type StreamEvent =
-  | { type: 'node_active'; node_id: string; agent_name: string }
-  | { type: 'node_complete'; node_id: string; output: string }
-  | { type: 'workflow_complete'; final_output: string }
+  | { type: 'node_active'; node_id: string; agent_name: string; dry_run?: boolean }
+  | { type: 'node_complete'; node_id: string; output: string; dry_run?: boolean }
+  | { type: 'workflow_complete'; final_output: string; dry_run?: boolean }
   | { type: 'error'; content: string };
 
 interface RunOptions {
@@ -11,9 +11,10 @@ interface RunOptions {
   onEvent: (event: StreamEvent) => void;
   streamUrl: string;
   accessToken: string;
+  dry_run?: boolean;
 }
 
-export async function runWorkflowStream({ workflow_id, user_id, input, onEvent, streamUrl, accessToken }: RunOptions) {
+export async function runWorkflowStream({ workflow_id, user_id, input, onEvent, streamUrl, accessToken, dry_run = false }: RunOptions) {
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${accessToken}`,
@@ -22,7 +23,7 @@ export async function runWorkflowStream({ workflow_id, user_id, input, onEvent, 
   const response = await fetch(streamUrl, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ workflow_id, user_id, input })
+    body: JSON.stringify({ workflow_id, user_id, input, dry_run })
   });
 
   if (!response.body) throw new Error("No response body");
